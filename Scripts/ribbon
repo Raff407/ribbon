@@ -1,0 +1,17 @@
+#!/bin/bash
+# Sends a command to the running Ribbon:  ribbon focus-right   |   ribbon list
+set -euo pipefail
+COMMANDS="focus-left focus-right focus-up focus-down focus-first focus-last focus-column-1..9
+move-left move-right move-up move-down move-first move-last send-to-next-display
+cycle-width cycle-width-backward toggle-full-width centre-column wider narrower taller shorter
+equalize-heights pin-left pin-right stack-into-left stack-into-right pop-out-left pop-out-right
+toggle-tabbed toggle-float toggle-enabled gather-windows show-indicator open-settings
+enable disable relayout gather settings"
+if [ $# -ne 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "list" ]; then
+  echo "usage: ribbon <command>"
+  echo
+  echo "$COMMANDS"
+  [ $# -eq 1 ] && [ "$1" = "list" ] && exit 0
+  exit 64
+fi
+exec open -g "ribbon://$1"

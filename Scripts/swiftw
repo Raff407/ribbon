@@ -1,0 +1,18 @@
+#!/bin/bash
+# Runs `swift <args>` with every cache redirected into $TMPDIR (works inside sandboxes
+# that can't write ~/Library/Caches or the system module cache).
+set -euo pipefail
+CACHE_ROOT="${TMPDIR:-/tmp}/ribbon-swift-cache"
+mkdir -p "$CACHE_ROOT/clang" "$CACHE_ROOT/pm-cache" "$CACHE_ROOT/pm-config" "$CACHE_ROOT/pm-security"
+export CLANG_MODULE_CACHE_PATH="$CACHE_ROOT/clang"
+export SWIFTPM_MODULECACHE_OVERRIDE="$CACHE_ROOT/clang"
+# Prefer Xcode's own toolchain (a swiftly/standalone `swift` on PATH may not match the SDK).
+SWIFT="${RIBBON_SWIFT:-$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift}"
+[ -x "$SWIFT" ] || SWIFT="$(xcrun --find swift 2>/dev/null || command -v swift)"
+cmd="$1"; shift
+case "$cmd" in
+  build|test|run)
+    exec "$SWIFT" "$cmd" --cache-path "$CACHE_ROOT/pm-cache" --config-path "$CACHE_ROOT/pm-config" \
+      --security-path "$CACHE_ROOT/pm-security" --manifest-cache local --disable-sandbox "$@" ;;
+  *) exec "$SWIFT" "$cmd" "$@" ;;
+esac

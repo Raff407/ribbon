@@ -1,0 +1,18 @@
+# SwiftPM / Xcode
+.build/
+.build-*/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+
+# App bundles and release archives
+build/
+*.zip
+
+# macOS
+.DS_Store
+
+# Local tooling
+.claude/
+dist/
