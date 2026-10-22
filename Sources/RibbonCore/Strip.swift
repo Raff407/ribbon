@@ -18,6 +18,9 @@ public struct WindowLocation: Equatable, Sendable {
 /// * At most one column has `pin == .left` and it is at index 0; at most one has
 ///   `pin == .right` and it is the last column. A column can't be both.
 /// * Every column satisfies the `Column` invariants.
+/// * Only the focused column can be full width: full width lasts while the column has
+///   focus and reverts to its own width when focus moves on, so a maximised window never
+///   ends up half off-screen next to the one you're using.
 public struct Strip: Equatable, Codable, Sendable {
     public var columns: [Column]
     public var focusedColumnIndex: Int?
@@ -28,8 +31,14 @@ public struct Strip: Equatable, Codable, Sendable {
     public var viewportOffset: Double
 
     public init(columns: [Column] = [], focusedColumnIndex: Int? = nil, viewportOffset: Double = 0) {
-        self.columns = columns
-        self.focusedColumnIndex = columns.isEmpty ? nil : (focusedColumnIndex ?? 0)
+        let focus = columns.isEmpty ? nil : (focusedColumnIndex ?? 0)
+        self.columns = columns.enumerated().map { index, column in
+            guard column.isFullWidth, index != focus else { return column }
+            var released = column
+            released.isFullWidth = false
+            return released
+        }
+        self.focusedColumnIndex = focus
         self.viewportOffset = viewportOffset
     }
 

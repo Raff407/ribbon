@@ -222,6 +222,20 @@ final class StripCommandTests: XCTestCase {
         XCTAssertFalse(full.run(.narrower).columns[0].isFullWidth)
     }
 
+    func testFullWidthOnlyLastsWhileFocused() {
+        let s = makeStrip([1, 2, 3], focused: 1).run(.toggleFullWidth)
+        XCTAssertTrue(s.columns[1].isFullWidth)
+        let away = s.run(.focus(.left))
+        XCTAssertFalse(away.columns[1].isFullWidth, "focus moved on → back to its own width")
+        XCTAssertEqual(away.columns[1].widthFraction, 0.5)
+        XCTAssertFalse(s.focusing(3).columns[1].isFullWidth, "clicking another window does the same")
+        XCTAssertTrue(s.run(.move(.right)).columns[2].isFullWidth, "moving the column keeps it (still focused)")
+        XCTAssertFalse(s.inserting(9, position: .afterFocused, widthFraction: 0.5, focus: true).columns[1].isFullWidth)
+        XCTAssertTrue(s.inserting(9, position: .afterFocused, widthFraction: 0.5, focus: false).columns[1].isFullWidth)
+        let wide = LayoutEngine.placements(away, context: LayoutContext(area: testArea, screenFrame: testScreen), config: testConfig)
+        XCTAssertEqual(wide.first { $0.window == 2 }?.frame.width, 495)
+    }
+
     func testTallerShorterEqualize() {
         let s = Strip(columns: [Column(windows: [1, 2, 3], widthFraction: 0.5)])
         let t = s.run(.taller)

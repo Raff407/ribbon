@@ -13,7 +13,7 @@ learn. It only needs the Accessibility permission, and you never have to disable
 ## Features
 
 - **The strip:** one per display and per Space, each with its own focus and scroll position.
-- **Columns:** preset widths, full width, centre, wider/narrower.
+- **Columns:** preset widths, full width (while the column has focus), centre, wider/narrower.
 - **Stacks and tabs:** stack several windows in one column, or turn a column into tabs with
   a clickable tab bar.
 - **Pinning:** pin a column to the left or right edge while the rest of the strip scrolls.
@@ -86,7 +86,7 @@ Arrow keys and number keys are never used, so ⌥-arrow word jumps and ⌥-numbe
 | Focus left / down / up / right | ⌥ H J K L |
 | Move window left / down / up / right | ⌥⇧ H J K L |
 | Cycle width / backwards | ⌥ R / ⌥⇧ R |
-| Full width | ⌥ F |
+| Full width (until focus moves on) | ⌥ F |
 | Centre the column | ⌥ C |
 | Wider / narrower | ⌥ = / ⌥ - |
 | Stack into left / right column | ⌥ [ / ⌥ ] |

@@ -28,7 +28,8 @@ public struct Column: Equatable, Codable, Sendable {
     public var widthFraction: Double
     public var mode: ColumnMode
     /// When true the column is laid out at full width; `widthFraction` is kept so that
-    /// toggling full width off restores the previous width.
+    /// toggling full width off restores the previous width. Only the focused column of a
+    /// strip keeps this (see `Strip`).
     public var isFullWidth: Bool
     /// Pinned columns stay at a screen edge while the rest of the strip scrolls.
     /// A left-pinned column is always at index 0 of `Strip.columns`, a right-pinned

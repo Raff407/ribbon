@@ -30,6 +30,7 @@ func assertInvariants(_ strip: Strip, file: StaticString = #filePath, line: UInt
         XCTAssertTrue(column.windows.indices.contains(column.activeIndex), "activeIndex \(i)", file: file, line: line)
         if column.pin == .left { XCTAssertEqual(i, 0, "left pin not first", file: file, line: line) }
         if column.pin == .right { XCTAssertEqual(i, strip.columns.count - 1, "right pin not last", file: file, line: line) }
+        if column.isFullWidth { XCTAssertEqual(i, f, "full width on an unfocused column", file: file, line: line) }
     }
 }
 
