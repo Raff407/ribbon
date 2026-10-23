@@ -63,8 +63,9 @@ public enum LayoutEngine {
     ///   the column centre is nearer).
     /// * Visibility of non-pinned columns is judged against the scrollable area with a
     ///   1pt tolerance: fully inside → `.visible`; fully outside → `.hidden(side)`;
-    ///   otherwise `.partial`, unless the edge it crosses is in `context.blockedSides`
-    ///   or is next to a pinned column, in which case `.hidden(side)`. The focused column
+    ///   otherwise `.hidden(side)` too, so no window hangs off the screen. With
+    ///   `config.showsPartialColumns` it's `.partial` instead, unless the edge it crosses
+    ///   is in `context.blockedSides` or is next to a pinned column. The focused column
     ///   is never hidden (at worst `.partial`), so focus is always on screen.
     /// * Frames are rounded to whole points.
     public static func placements(_ strip: Strip, context: LayoutContext, config: LayoutConfig) -> [WindowPlacement] {
@@ -91,8 +92,8 @@ public enum LayoutEngine {
                 x = Double(scrollable.minX) + stripX - strip.viewportOffset
                 stripX += width + config.gap
                 visibility = columnVisibility(
-                    x: x, width: width, scrollable: scrollable, strip: strip,
-                    blocked: blocked, isFocused: index == strip.focusedColumnIndex
+                    x: x, width: width, scrollable: scrollable, strip: strip, blocked: blocked,
+                    isFocused: index == strip.focusedColumnIndex, showsPartial: config.showsPartialColumns
                 )
             }
             result += rows(of: column, columnIndex: index, x: x, width: width, visibility: visibility,
@@ -110,6 +111,9 @@ public enum LayoutEngine {
     /// For `.never` and `.onOverflow` the result is clamped to
     /// `0 ... max(0, stripWidth - scrollableWidth)`; a column wider than the scrollable
     /// area is left-aligned. Pinned focused column → unchanged.
+    /// With `.never` and no partial columns, the offset then moves to whichever nearby
+    /// column-aligned position shows the most (see `fullestOffset`), so a column that only
+    /// partly fits doesn't leave an empty gap where a whole one would.
     public static func revealFocused(_ strip: Strip, area: CGRect, config: LayoutConfig) -> Strip {
         guard let f = strip.focusedColumnIndex,
               let span = stripSpan(ofColumn: f, in: strip, area: area, config: config) else { return strip }
@@ -139,6 +143,9 @@ public enum LayoutEngine {
         offset = clamp(offset, total: total, width: width)
         if span.upperBound - span.lowerBound > width {
             offset = span.lowerBound
+        } else if config.centreMode == .never && !config.showsPartialColumns {
+            let spans = Array(stripSpans(strip, area: area, config: config).values)
+            offset = fullestOffset(near: offset, keeping: span, spans: spans, total: total, width: width)
         }
         return strip.withViewportOffset(offset)
     }
@@ -289,7 +296,7 @@ extension LayoutEngine {
     }
 
     static func columnVisibility(
-        x: Double, width: Double, scrollable: CGRect, strip: Strip, blocked: Set<Side>, isFocused: Bool
+        x: Double, width: Double, scrollable: CGRect, strip: Strip, blocked: Set<Side>, isFocused: Bool, showsPartial: Bool
     ) -> Visibility {
         let tolerance = 1.0
         let lower = Double(scrollable.minX)
@@ -301,7 +308,7 @@ extension LayoutEngine {
             if right <= lower { return .hidden(.left) }
             if x >= upper { return .hidden(.right) }
             let pinnedOnSide = side == .left ? strip.leftPinnedColumnIndex != nil : strip.rightPinnedColumnIndex != nil
-            if blocked.contains(side) || pinnedOnSide { return .hidden(side) }
+            if !showsPartial || blocked.contains(side) || pinnedOnSide { return .hidden(side) }
         }
         return .partial
     }
@@ -348,6 +355,29 @@ extension LayoutEngine {
     static func movesBackwards(from current: CGRect?, to target: CGRect, travelling entering: Side) -> Bool {
         guard let current else { return false }
         return entering == .right ? target.minX > current.minX + 1 : target.minX < current.minX - 1
+    }
+
+    /// Of `offset` and the offsets that line a column up with either edge, the one that
+    /// keeps `focused` fully in view and shows the most column width in full, preferring
+    /// the least scrolling (then the leftmost).
+    static func fullestOffset(near offset: Double, keeping focused: ClosedRange<Double>, spans: [ClosedRange<Double>],
+                              total: Double, width: Double) -> Double {
+        func fits(_ span: ClosedRange<Double>, at o: Double) -> Bool {
+            span.lowerBound >= o - 0.5 && span.upperBound <= o + width + 0.5
+        }
+        func shown(at o: Double) -> Double {
+            spans.reduce(0) { fits($1, at: o) ? $0 + $1.upperBound - $1.lowerBound : $0 }
+        }
+        let candidates = ([offset] + spans.flatMap { [$0.lowerBound, $0.upperBound - width] })
+            .map { clamp($0, total: total, width: width) }
+            .filter { fits(focused, at: $0) }
+        return candidates.max { a, b in
+            let shownA = shown(at: a), shownB = shown(at: b)
+            if abs(shownA - shownB) > 0.5 { return shownA < shownB }
+            let moveA = abs(a - offset), moveB = abs(b - offset)
+            if abs(moveA - moveB) > 0.5 { return moveA > moveB }
+            return a > b
+        } ?? offset
     }
 
     static func clamp(_ offset: Double, total: Double, width: Double) -> Double {

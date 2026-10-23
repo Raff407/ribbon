@@ -11,6 +11,7 @@ extension WindowManager {
         case .windowDestroyed(let id): windowDestroyed(id)
         case .windowFocused(let id): windowFocused(id)
         case .windowMoved(let id, let frame), .windowResized(let id, let frame): windowFrameChanged(id, frame: frame)
+        case .windowRefusedSize(let id, let frame): windowRefusedSize(id, frame: frame)
         case .windowMinimized(let id): park(id, reason: .minimized)
         case .windowDeminimized(let id): unpark(id, focus: true, clearing: .minimized)
         case .windowTitleChanged(let id, let title): titleChanged(id, title: title)
@@ -110,6 +111,7 @@ extension WindowManager {
         pendingTabChecks.remove(id)
         lastLayoutTime[id] = nil
         widthAdoptions[id] = nil
+        refusedSizeAdoptions[id] = nil
         for name in ["native-tab-\(id)", "fullscreen-\(id)", "app-move-\(id)", "close-focus-\(id)"] {
             debounces.removeValue(forKey: name)?.cancel()
         }
@@ -186,6 +188,27 @@ extension WindowManager {
                 adoptWidth(frame.width, of: id, key: key, display: display)
             }
         }
+        relayout(animated: true, force: true)
+    }
+
+    /// A window that won't take its column's width (a minimum or fixed size) would overlap
+    /// its neighbours, so the column takes the window's width instead. Ignored while the
+    /// window is parked (apps clamp sizes near screen corners), and capped per window so
+    /// an app that keeps changing its mind can't make Ribbon chase it.
+    func windowRefusedSize(_ id: WindowID, frame: CGRect) {
+        infos[id]?.frame = frame
+        guard let key = world.key(containing: id), let display = display(forKey: key),
+              let column = world.strip(key).location(of: id).map({ world.strip(key).columns[$0.column] }),
+              let expected = services.applier.expectedFrame(of: id),
+              expected.intersectionArea(with: display.frame) >= expected.width * expected.height / 2 else { return }
+        let current = LayoutEngine.columnWidth(column, areaWidth: Double(workingArea(display).width), config: settings.layout)
+        guard abs(Double(frame.width) - current) > Double(Self.ownMoveTolerance) else { return }
+        let now = services.scheduler.now()
+        let recent = (refusedSizeAdoptions[id] ?? []).filter { now - $0 < Self.widthAdoptionInterval }
+        guard recent.count < Self.maxRefusedSizeAdoptions else { return }
+        refusedSizeAdoptions[id] = recent + [now]
+        adoptWidth(frame.width, of: id, key: key, display: display)
+        storeRevealed(world.strip(key), for: key)
         relayout(animated: true, force: true)
     }
 

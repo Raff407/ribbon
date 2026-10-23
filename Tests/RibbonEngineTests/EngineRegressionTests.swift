@@ -170,7 +170,10 @@ final class EngineRegressionTests: XCTestCase {
     }
 
     func testTabBarsFollowActiveRowsAcrossMixedColumns() {
-        let h = Harness().start(Array(1...8).map(WindowID.init), focused: 1)
+        // The last column only partly fits; peek mode keeps it (and its tab bar) on screen.
+        var settings = Harness.testSettings
+        settings.layout.showsPartialColumns = true
+        let h = Harness(settings: settings).start(Array(1...8).map(WindowID.init), focused: 1)
         h.manager.world = World(strips: [h.key: Strip(columns: [
             Column(windows: [1, 2], activeIndex: 1, widthFraction: 0.2, mode: .tabbed),
             Column(windows: [3, 4], widthFraction: 0.2),

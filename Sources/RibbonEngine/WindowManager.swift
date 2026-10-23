@@ -47,6 +47,7 @@ public final class WindowManager {
     var suppressRevealFor: WindowID?
     var lastLayoutTime: [WindowID: TimeInterval] = [:]
     var widthAdoptions: [WindowID: TimeInterval] = [:]
+    var refusedSizeAdoptions: [WindowID: [TimeInterval]] = [:]
     var draggedWindow: WindowID?
     var gestureKey: StripKey?
     var modifierHeld = false
@@ -66,6 +67,8 @@ public final class WindowManager {
     static let ownMoveWindow: TimeInterval = 0.35
     static let ownMoveTolerance: CGFloat = 4
     static let widthAdoptionInterval: TimeInterval = 2
+    /// Refused sizes adopted per window within `widthAdoptionInterval`.
+    static let maxRefusedSizeAdoptions = 3
     static let cascadeStep: CGFloat = 30
 
     public init(services: EngineServices, settings: RibbonSettings, ownBundleID: String?) {

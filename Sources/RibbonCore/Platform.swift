@@ -61,6 +61,9 @@ public enum WindowEvent: Equatable, Sendable {
     /// Reported position changed (by anyone, including Ribbon itself).
     case windowMoved(WindowID, CGRect)
     case windowResized(WindowID, CGRect)
+    /// The window kept a different size than Ribbon set (a minimum or fixed size); the
+    /// frame is where it actually is.
+    case windowRefusedSize(WindowID, CGRect)
     case windowMinimized(WindowID)
     case windowDeminimized(WindowID)
     case windowTitleChanged(WindowID, String)

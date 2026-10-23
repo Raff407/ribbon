@@ -25,6 +25,9 @@ struct LayoutPane: View {
                 ToggleRow(title: "Loop around at the ends",
                           detail: "Going right from the last window jumps to the first, and left from the first to the last. Moving windows loops the same way.",
                           isOn: store.binding(\.layout.wrapsAround))
+                ToggleRow(title: "Peek at windows past the edges",
+                          detail: "Off: a window either fits on screen or is tucked away, so nothing hangs off the edge. On: windows that only partly fit show cut off at the screen edge.",
+                          isOn: store.binding(\.layout.showsPartialColumns))
             }
             Section("Column Widths") {
                 SliderRow(title: "New window width", value: store.binding(\.layout.defaultWidthFraction),

@@ -4,7 +4,7 @@ import XCTest
 
 let testConfig = LayoutConfig(gap: 10, outerGap: 0, centreMode: .never, widthPresets: [0.25, 0.5, 0.75],
                               defaultWidthFraction: 0.5, widthStep: 0.1, heightStep: 0.1, minWidthFraction: 0.1,
-                              parkingSliver: 1, tabBarHeight: 20)
+                              parkingSliver: 1, tabBarHeight: 20, showsPartialColumns: true)
 /// 1000 × 800 working area at the origin.
 let testArea = CGRect(x: 0, y: 0, width: 1000, height: 800)
 let testScreen = CGRect(x: 0, y: 0, width: 1000, height: 800)

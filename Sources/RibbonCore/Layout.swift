@@ -33,6 +33,9 @@ public struct LayoutConfig: Equatable, Codable, Sendable {
     public var tabBarHeight: Double
     /// Focus and move left/right loop around: past the last column comes the first.
     public var wrapsAround: Bool
+    /// Show unfocused windows that only partly fit, cut off by the screen edge. Off: a
+    /// window either fits entirely or is parked, so nothing hangs off the screen.
+    public var showsPartialColumns: Bool
 
     public init(
         gap: Double = 8,
@@ -45,7 +48,8 @@ public struct LayoutConfig: Equatable, Codable, Sendable {
         minWidthFraction: Double = 0.1,
         parkingSliver: Double = 1,
         tabBarHeight: Double = 26,
-        wrapsAround: Bool = true
+        wrapsAround: Bool = true,
+        showsPartialColumns: Bool = false
     ) {
         self.gap = gap
         self.outerGap = outerGap
@@ -58,6 +62,7 @@ public struct LayoutConfig: Equatable, Codable, Sendable {
         self.parkingSliver = parkingSliver
         self.tabBarHeight = tabBarHeight
         self.wrapsAround = wrapsAround
+        self.showsPartialColumns = showsPartialColumns
     }
 
     public static let `default` = LayoutConfig()
@@ -67,7 +72,8 @@ public enum Visibility: Equatable, Sendable {
     /// Entirely inside the scrollable area (or a pinned column).
     case visible
     /// Partly inside the scrollable area, sticking out past an edge that has no
-    /// neighbouring display and no pinned column.
+    /// neighbouring display and no pinned column (only with `showsPartialColumns`, or
+    /// for the focused column when it's wider than the screen).
     case partial
     /// Not shown; should be parked off to this side.
     case hidden(Side)
@@ -168,7 +174,8 @@ extension LayoutConfig {
             minWidthFraction: c.value(.minWidthFraction, default: d.minWidthFraction),
             parkingSliver: c.value(.parkingSliver, default: d.parkingSliver),
             tabBarHeight: c.value(.tabBarHeight, default: d.tabBarHeight),
-            wrapsAround: c.value(.wrapsAround, default: d.wrapsAround)
+            wrapsAround: c.value(.wrapsAround, default: d.wrapsAround),
+            showsPartialColumns: c.value(.showsPartialColumns, default: d.showsPartialColumns)
         )
     }
 }

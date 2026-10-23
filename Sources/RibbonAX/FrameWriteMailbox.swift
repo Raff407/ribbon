@@ -6,9 +6,12 @@ import RibbonCore
 struct FrameWrite: Equatable {
     var position: CGPoint?
     var size: CGSize?
+    /// Read the size back afterwards; belongs to `size`, so it's kept or replaced with it.
+    var checksSize = false
 
     func merging(_ later: FrameWrite) -> FrameWrite {
-        FrameWrite(position: later.position ?? position, size: later.size ?? size)
+        FrameWrite(position: later.position ?? position, size: later.size ?? size,
+                   checksSize: later.size == nil ? checksSize : later.checksSize)
     }
 }
 

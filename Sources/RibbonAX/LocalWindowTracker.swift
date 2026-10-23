@@ -19,9 +19,14 @@ final class LocalWindowTracker {
     private var entries: [ObjectIdentifier: Entry] = [:]
     /// Windows the engine currently knows (shown and not yet closed).
     private var announced: Set<WindowID> = []
-    /// A size AppKit refused (e.g. below the window's minimum) is reported this long after
-    /// the move, once the engine no longer treats it as Ribbon's own move.
-    private static let refusedSizeReportDelay: TimeInterval = 0.45
+    /// The frame Ribbon last asked for (AppKit space), per window.
+    private var requested: [WindowID: CGRect] = [:]
+    /// Width difference (points) that counts as AppKit refusing a size (e.g. below the
+    /// window's minimum).
+    private static let refusedSizeTolerance: CGFloat = 4
+    /// SwiftUI enforces its minimum size on a later layout pass, so the size is checked
+    /// again this long after it was set.
+    private static let refusedSizeCheckDelay: TimeInterval = 0.1
 
     deinit {
         for entry in entries.values { entry.tokens.forEach(NotificationCenter.default.removeObserver) }
@@ -82,11 +87,11 @@ final class LocalWindowTracker {
         guard let window = window(for: id) else { return }
         let wanted = CoordinateSpace.flip(frame, primaryHeight: PrimaryScreen.height)
         window.setFrame(wanted, display: true)
-        let got = window.frame
-        guard abs(got.width - wanted.width) > 4 || abs(got.height - wanted.height) > 4 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.refusedSizeReportDelay) { [weak self, weak window] in
-            guard let self, let window, self.announced.contains(id) else { return }
-            self.emit?(.windowResized(id, Self.axFrame(of: window)))
+        requested[id] = wanted
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.refusedSizeCheckDelay) { [weak self, weak window] in
+            guard let self, let window, self.announced.contains(id), self.requested[id] == wanted,
+                  abs(window.frame.width - wanted.width) > Self.refusedSizeTolerance else { return }
+            self.emit?(.windowRefusedSize(id, Self.axFrame(of: window)))
         }
     }
 
@@ -103,6 +108,7 @@ final class LocalWindowTracker {
 
     private func closed(_ window: NSWindow) {
         let id = Self.id(of: window)
+        requested[id] = nil
         guard announced.remove(id) != nil else { return }
         emit?(.windowDestroyed(id))
     }

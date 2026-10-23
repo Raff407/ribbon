@@ -8,6 +8,9 @@ extension WindowManager {
     var layoutConfig: LayoutConfig {
         var config = settings.layout
         if !settings.appearance.tabBarsEnabled { config.tabBarHeight = 0 }
+        // Mid-swipe, windows slide across the edges with your fingers instead of
+        // vanishing the moment they touch one; the snap at the end tidies up.
+        if gestureKey != nil { config.showsPartialColumns = true }
         return config
     }
 

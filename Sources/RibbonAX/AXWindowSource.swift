@@ -155,6 +155,12 @@ public final class AXWindowSource: WindowSource {
         ownMoveUntil[id] = CACurrentMediaTime() + Self.ownMoveQuiet
     }
 
+    /// The applier found a window that kept a different size than it was given.
+    func reportRefusedSize(_ id: WindowID, frame: CGRect) {
+        guard registry.phase(of: id) == .announced else { return }
+        emit(.windowRefusedSize(id, frame))
+    }
+
     // MARK: Apps
 
     private func shouldObserve(_ app: NSRunningApplication) -> Bool {

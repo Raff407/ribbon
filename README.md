@@ -16,6 +16,9 @@ learn. It only needs the Accessibility permission, and you never have to disable
 
 - **The strip:** one per display and per Space, each with its own focus and scroll position.
 - **Columns:** preset widths, full width (while the column has focus), centre, wider/narrower.
+- **Clean edges:** windows never overlap or hang off the screen. A window that only partly
+  fits is tucked away until you scroll to it (or let it peek, in Settings → Layout), and a
+  window with a minimum width gets a column wide enough for it.
 - **Stacks and tabs:** stack several windows in one column, or turn a column into tabs with
   a clickable tab bar.
 - **Pinning:** pin a column to the left or right edge while the rest of the strip scrolls.

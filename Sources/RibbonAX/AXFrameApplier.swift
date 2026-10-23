@@ -42,6 +42,11 @@ public final class AXFrameApplier: FrameApplying {
     /// Enhanced UI is switched back on this long after the last move, so a gesture
     /// doesn't toggle it (Chromium rebuilds its whole AX tree every time) per frame.
     private static let enhancedUIRestoreDelay: TimeInterval = 0.5
+    /// A settled window's size is read back this long after it was set (some apps apply
+    /// a new size a moment later), to catch windows that keep a minimum or fixed size.
+    private static let sizeCheckDelay: TimeInterval = 0.15
+    /// Width difference (points) that counts as the window refusing its size.
+    private static let refusedSizeTolerance: CGFloat = 4
 
     public init(source: AXWindowSource) {
         self.source = source
@@ -94,7 +99,7 @@ public final class AXFrameApplier: FrameApplying {
                 animate(id, element: element, pid: pid, transition: transition, parameters: animation.spring)
             } else {
                 animations[id] = nil
-                write(transition.settledFrame, to: id, element: element, pid: pid)
+                write(transition.settledFrame, to: id, element: element, pid: pid, checksSize: true)
             }
         }
         if animations.isEmpty {
@@ -141,7 +146,7 @@ public final class AXFrameApplier: FrameApplying {
         }
         let spring = OriginSpring(from: origin, to: target.origin)
         if spring.isSettled {
-            write(transition.final ?? target, to: id, element: element, pid: pid)
+            write(transition.final ?? target, to: id, element: element, pid: pid, checksSize: true)
             return
         }
         animations[id] = Animation(spring: spring, parameters: parameters, final: transition.final, lastSet: origin, size: target.size)
@@ -171,7 +176,8 @@ public final class AXFrameApplier: FrameApplying {
             if next.spring.isSettled {
                 // Full frame: re-applies the size at the final position (apps clamp sizes
                 // to the screen they're on when the size is set).
-                write(next.final ?? CGRect(origin: next.spring.target, size: next.size), to: id, element: element, pid: pid, forceSize: true)
+                write(next.final ?? CGRect(origin: next.spring.target, size: next.size), to: id, element: element, pid: pid,
+                      forceSize: true, checksSize: true)
                 animations[id] = nil
                 continue
             }
@@ -198,11 +204,13 @@ public final class AXFrameApplier: FrameApplying {
     // MARK: Queued writes
 
     /// Full frame. Size → position → size (apps clamp sizes by position near screen edges),
-    /// or just the position when the size is already right.
-    private func write(_ frame: CGRect, to id: WindowID, element: AXUIElement, pid: pid_t, forceSize: Bool = false) {
+    /// or just the position when the size is already right. `checksSize`: this is where
+    /// the window settles, so make sure it took the size (see `checkSize`).
+    private func write(_ frame: CGRect, to id: WindowID, element: AXUIElement, pid: pid_t,
+                       forceSize: Bool = false, checksSize: Bool = false) {
         let sizeChanged = forceSize || (sent[id].map { abs($0.width - frame.width) > 0.5 || abs($0.height - frame.height) > 0.5 } ?? true)
         sent[id] = frame
-        enqueue(FrameWrite(position: frame.origin, size: sizeChanged ? frame.size : nil),
+        enqueue(FrameWrite(position: frame.origin, size: sizeChanged ? frame.size : nil, checksSize: checksSize && sizeChanged),
                 to: id, element: element, pid: pid)
     }
 
@@ -233,6 +241,22 @@ public final class AXFrameApplier: FrameApplying {
                     guard let self, let current = self.source.element(for: id), CFEqual(current, element) else { return }
                     self.forget(id)
                 }
+            } else if latest.checksSize, let size = latest.size {
+                self.checkSize(size, of: id, element: element, pid: pid)
+            }
+        }
+    }
+
+    /// Reads the size back (on the app's queue) and reports a window that kept a
+    /// different width, unless Ribbon has asked for another size since.
+    private func checkSize(_ requested: CGSize, of id: WindowID, element: AXUIElement, pid: pid_t) {
+        queues.queue(for: pid).asyncAfter(deadline: .now() + Self.sizeCheckDelay) { [weak self] in
+            guard let actual = element.frame(), abs(actual.width - requested.width) > Self.refusedSizeTolerance else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.animations[id] == nil, self.sent[id]?.size == requested,
+                      let current = self.source.element(for: id), CFEqual(current, element) else { return }
+                self.sent[id] = actual
+                self.source.reportRefusedSize(id, frame: actual)
             }
         }
     }
