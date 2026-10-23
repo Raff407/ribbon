@@ -23,6 +23,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = urlHandler  // installs the Get URL handler before AppKit delivers a launch URL
+        launchedAsLoginItem = Self.isLoginItemLaunch(NSAppleEventManager.shared().currentAppleEvent)
+    }
+
+    /// Launched by the system at login (stay quiet in the menu bar) rather than by the user.
+    private var launchedAsLoginItem = false
+
+    static func isLoginItemLaunch(_ event: NSAppleEventDescriptor?) -> Bool {
+        guard let event, event.eventID == AEEventID(kAEOpenApplication) else { return false }
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -54,6 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if AccessibilityPermission.isTrusted(prompt: false) {
             manager.start()
             urlHandler.managerDidStart()
+            // Opened from Finder, Launchpad or Spotlight: show the settings so the app
+            // doesn't seem to do nothing. (A URL launch or a login launch stays quiet.)
+            let isPlainLaunch = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true
+            if isPlainLaunch && !launchedAsLoginItem { settingsWindow?.show() }
         } else {
             onboarding.show { [weak self, weak manager] in
                 manager?.start()

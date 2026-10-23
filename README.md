@@ -1,3 +1,5 @@
+<p align="center"><img src="Resources/AppIcon-1024.png" width="128" alt="Ribbon icon"></p>
+
 # Ribbon
 
 **A free, open-source scrolling window manager for macOS**, in the spirit of
@@ -52,6 +54,10 @@ learn. It only needs the Accessibility permission, and you never have to disable
 
 4. Allow Ribbon under **System Settings → Privacy & Security → Accessibility**. The welcome
    window closes and tiling starts.
+
+After that, open Ribbon like any app (Finder, Launchpad or Spotlight) to get its settings
+window. It also lives in the menu bar (the three-column icon), and **⌥ ,** opens settings
+from anywhere.
 
 The release is a universal app, so it runs on both Apple silicon and Intel Macs with
 macOS 13 Ventura or later.

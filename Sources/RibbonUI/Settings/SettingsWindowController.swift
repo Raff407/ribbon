@@ -29,9 +29,11 @@ public final class SettingsWindowController {
         recorder.stop()
     }
 
-    /// Brings the settings window to the front, activating Ribbon (an accessory app).
+    /// Brings the settings window to the front. While it's open Ribbon shows in the Dock
+    /// and the app switcher like a normal app; closing it goes back to menu-bar only.
     public func show() {
         let window = self.window ?? makeWindow()
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
@@ -61,6 +63,7 @@ public final class SettingsWindowController {
             forName: NSWindow.willCloseNotification, object: window, queue: .main
         ) { [weak self] _ in
             self?.recorder.stop()
+            NSApp.setActivationPolicy(.accessory)
         }
         // The recorder only sees keys while this window is key: losing key would otherwise
         // leave every hotkey suspended.

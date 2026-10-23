@@ -25,6 +25,7 @@ cp "$BIN" "$APP/Contents/MacOS/Ribbon"
 # builder's home folder), which have no business in a published binary.
 strip -S -x "$APP/Contents/MacOS/Ribbon"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 if [ -z "${RIBBON_SIGN_IDENTITY:-}" ]; then
   codesign --force --sign - --identifier com.raff.ribbon \
     --requirements '=designated => identifier "com.raff.ribbon"' --timestamp=none "$APP"

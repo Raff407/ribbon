@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AboutPane: View {
@@ -10,9 +11,9 @@ struct AboutPane: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "rectangle.split.3x1.fill")
-                .font(.system(size: 54))
-                .foregroundColor(.accentColor)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
             Text("Ribbon").font(.largeTitle.weight(.semibold))
             Text(version).foregroundStyle(.secondary)
             Text("A scrolling window manager for macOS. Every window sits side by side on one endless strip, the way PaperWM and niri work on Linux. Nothing overlaps, and opening one more app never shrinks the rest — you just scroll.")
