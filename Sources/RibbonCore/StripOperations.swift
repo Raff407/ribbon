@@ -144,13 +144,17 @@ public extension Strip {
     /// outer gap — see `LayoutEngine.workingArea`), needed for `.centreColumn`.
     ///
     /// Semantics:
-    /// * `.focus(.left/.right)`: focused column ∓/± 1, no wrap-around (pinned columns
-    ///   take part in navigation order like any other column).
+    /// * `.focus(.left/.right)`: focused column ∓/± 1 (pinned columns take part in
+    ///   navigation order like any other column). With `config.wrapsAround`, right from the
+    ///   last column goes to the first and left from the first to the last; otherwise it
+    ///   stops at the ends.
     /// * `.focus(.up/.down)`: focused column's `activeIndex` ∓/± 1, no wrap (works for
     ///   stacked and tabbed columns).
     /// * `.focusFirst/.focusLast`: first/last column. `.focusColumn(n)`: column n-1 if it exists.
     /// * `.move(.left/.right)`: swap the focused column with its neighbour; focus follows.
-    ///   Pinned columns don't move, and nothing moves past a pinned column.
+    ///   Pinned columns don't move, and nothing moves past a pinned column. With
+    ///   `config.wrapsAround`, moving past either end of the scrollable columns puts the
+    ///   column at the other end.
     /// * `.move(.up/.down)`: swap the active window with the one above/below in its column.
     /// * `.moveFirst/.moveLast`: move the focused (non-pinned) column to the start/end of
     ///   the scrollable columns.
@@ -181,15 +185,15 @@ public extension Strip {
     func applying(_ command: Command, area: CGRect, config: LayoutConfig) -> Strip {
         guard let f = focusedColumnIndex, columns.indices.contains(f) else { return self }
         switch command {
-        case .focus(.left): return focusingColumn(f - 1)
-        case .focus(.right): return focusingColumn(f + 1)
+        case .focus(.left): return focusingColumn(neighbour(of: f, by: -1, wraps: config.wrapsAround))
+        case .focus(.right): return focusingColumn(neighbour(of: f, by: 1, wraps: config.wrapsAround))
         case .focus(.up): return updatingColumn(f) { $0.focusingRow($0.activeIndex - 1) }
         case .focus(.down): return updatingColumn(f) { $0.focusingRow($0.activeIndex + 1) }
         case .focusFirst: return focusingColumn(0)
         case .focusLast: return focusingColumn(columns.count - 1)
         case .focusColumn(let n): return focusingColumn(n - 1)
-        case .move(.left): return swappingColumn(f, with: f - 1)
-        case .move(.right): return swappingColumn(f, with: f + 1)
+        case .move(.left): return movingFocusedColumn(by: -1, wraps: config.wrapsAround)
+        case .move(.right): return movingFocusedColumn(by: 1, wraps: config.wrapsAround)
         case .move(.up): return updatingColumn(f) { $0.swappingActiveRow(by: -1) }
         case .move(.down): return updatingColumn(f) { $0.swappingActiveRow(by: 1) }
         case .moveFirst: return scrollableIndexRange.map { movingColumn(from: f, to: $0.lowerBound) } ?? self
@@ -231,6 +235,25 @@ extension Strip {
         let indices = scrollableColumnIndices
         guard let first = indices.first, let last = indices.last else { return nil }
         return first...last
+    }
+
+    /// The column `delta` away from `index`, looping round the ends when `wraps`.
+    func neighbour(of index: Int, by delta: Int, wraps: Bool) -> Int {
+        let next = index + delta
+        guard !columns.indices.contains(next) else { return next }
+        return wraps ? (next % columns.count + columns.count) % columns.count : index
+    }
+
+    /// Swaps the focused column with its neighbour; at either end of the scrollable
+    /// columns (or next to a pin) it moves to the other end instead when `wraps`.
+    func movingFocusedColumn(by delta: Int, wraps: Bool) -> Strip {
+        guard let f = focusedColumnIndex, columns[f].pin == nil else { return self }
+        let next = f + delta
+        if columns.indices.contains(next), columns[next].pin == nil {
+            return swappingColumn(f, with: next)
+        }
+        guard wraps, let range = scrollableIndexRange, range.count > 1 else { return self }
+        return movingColumn(from: f, to: delta < 0 ? range.upperBound : range.lowerBound)
     }
 
     func focusingColumn(_ index: Int) -> Strip {

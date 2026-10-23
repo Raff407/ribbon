@@ -99,7 +99,9 @@ Arrow keys and number keys are never used, so ⌥-arrow word jumps and ⌥-numbe
 | Gather all windows | ⌥⇧ G |
 | Settings | ⌥ , |
 
-Focus, move and resize repeat while you hold the keys. In **Settings → Shortcuts** you can:
+Focus and move loop around: going right from the last window jumps to the first, and left
+from the first to the last (you can switch this off in Settings → Layout). Focus, move and
+resize repeat while you hold the keys. In **Settings → Shortcuts** you can:
 - rebind anything
 - bind commands that have no default (first/last window, window 1–9, taller/shorter, …)
 - switch to the **Control-Option (⌃⌥)** preset, which also uses arrow and number keys

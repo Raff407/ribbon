@@ -22,6 +22,9 @@ struct LayoutPane: View {
                     }
                 }
                 HelpText(store.settings.layout.centreMode.explanation)
+                ToggleRow(title: "Loop around at the ends",
+                          detail: "Going right from the last window jumps to the first, and left from the first to the last. Moving windows loops the same way.",
+                          isOn: store.binding(\.layout.wrapsAround))
             }
             Section("Column Widths") {
                 SliderRow(title: "New window width", value: store.binding(\.layout.defaultWidthFraction),

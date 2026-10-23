@@ -144,14 +144,36 @@ final class StripInsertRemoveTests: XCTestCase {
 
 final class StripCommandTests: XCTestCase {
     func testFocusLeftRightNoWrap() {
+        var noWrap = testConfig
+        noWrap.wrapsAround = false
         let s = makeStrip([1, 2, 3], focused: 0)
-        XCTAssertEqual(s.run(.focus(.left)), s)
+        XCTAssertEqual(s.run(.focus(.left), config: noWrap), s)
         XCTAssertEqual(s.run(.focus(.right)).focusedWindow, 2)
-        XCTAssertEqual(s.run(.focus(.right), .focus(.right), .focus(.right)).focusedWindow, 3)
+        XCTAssertEqual(s.run(.focus(.right), .focus(.right), .focus(.right), config: noWrap).focusedWindow, 3)
         XCTAssertEqual(s.run(.focusLast).focusedWindow, 3)
         XCTAssertEqual(s.run(.focusLast, .focusFirst).focusedWindow, 1)
         XCTAssertEqual(s.run(.focusColumn(2)).focusedWindow, 2)
         XCTAssertEqual(s.run(.focusColumn(9)), s)
+    }
+
+    func testFocusAndMoveWrapAround() {
+        let s = makeStrip([1, 2, 3], focused: 0)
+        XCTAssertEqual(s.run(.focus(.left)).focusedWindow, 3, "left from the first → last")
+        XCTAssertEqual(s.run(.focusLast, .focus(.right)).focusedWindow, 1, "right from the last → first")
+        XCTAssertEqual(s.run(.focus(.right), .focus(.right), .focus(.right)).focusedWindow, 1)
+        let movedLeft = s.run(.move(.left))
+        XCTAssertEqual(movedLeft.windowsByColumn, [[2], [3], [1]], "moving past the start lands at the end")
+        XCTAssertEqual(movedLeft.focusedWindow, 1)
+        let movedRight = s.run(.focusLast, .move(.right))
+        XCTAssertEqual(movedRight.windowsByColumn, [[3], [1], [2]])
+        XCTAssertEqual(makeStrip([1]).run(.focus(.right), .move(.left)), makeStrip([1]), "a single column stays put")
+        var pinned = makeStrip([1, 2, 3, 4], focused: 1)
+        pinned.columns[0].pin = .left
+        let wrapped = pinned.run(.move(.left))
+        XCTAssertEqual(wrapped.windowsByColumn, [[1], [3], [4], [2]], "never passes a pin; loops within the scrollable columns")
+        XCTAssertEqual(wrapped.columns[0].pin, .left)
+        XCTAssertEqual(pinned.run(.focusFirst, .move(.right)), pinned.run(.focusFirst), "pinned columns don't move")
+        [movedLeft, movedRight, wrapped].forEach { assertInvariants($0) }
     }
 
     func testFocusUpDownInStack() {
@@ -167,7 +189,9 @@ final class StripCommandTests: XCTestCase {
         let l = s.run(.move(.left))
         XCTAssertEqual(l.windowsByColumn, [[2], [1], [3]])
         XCTAssertEqual(l.focusedWindow, 2)
-        XCTAssertEqual(l.run(.move(.left)), l)
+        var noWrap = testConfig
+        noWrap.wrapsAround = false
+        XCTAssertEqual(l.run(.move(.left), config: noWrap), l)
         let r = s.run(.move(.right))
         XCTAssertEqual(r.windowsByColumn, [[1], [3], [2]])
         XCTAssertEqual(s.run(.moveFirst).windowsByColumn, [[2], [1], [3]])
@@ -177,7 +201,9 @@ final class StripCommandTests: XCTestCase {
     func testMoveRespectsPins() {
         var s = makeStrip([1, 2, 3], focused: 1)
         s.columns[0].pin = .left
-        XCTAssertEqual(s.run(.move(.left)), s)
+        var noWrap = testConfig
+        noWrap.wrapsAround = false
+        XCTAssertEqual(s.run(.move(.left), config: noWrap), s)
         XCTAssertEqual(s.run(.moveFirst), s)
         XCTAssertEqual(s.run(.focusFirst, .move(.right)).windowsByColumn, [[1], [2], [3]])
     }

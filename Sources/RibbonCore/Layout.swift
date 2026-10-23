@@ -31,6 +31,8 @@ public struct LayoutConfig: Equatable, Codable, Sendable {
     public var parkingSliver: Double
     /// Height reserved at the top of a tabbed column for its tab bar (0 = no bar).
     public var tabBarHeight: Double
+    /// Focus and move left/right loop around: past the last column comes the first.
+    public var wrapsAround: Bool
 
     public init(
         gap: Double = 8,
@@ -42,7 +44,8 @@ public struct LayoutConfig: Equatable, Codable, Sendable {
         heightStep: Double = 0.1,
         minWidthFraction: Double = 0.1,
         parkingSliver: Double = 1,
-        tabBarHeight: Double = 26
+        tabBarHeight: Double = 26,
+        wrapsAround: Bool = true
     ) {
         self.gap = gap
         self.outerGap = outerGap
@@ -54,6 +57,7 @@ public struct LayoutConfig: Equatable, Codable, Sendable {
         self.minWidthFraction = minWidthFraction
         self.parkingSliver = parkingSliver
         self.tabBarHeight = tabBarHeight
+        self.wrapsAround = wrapsAround
     }
 
     public static let `default` = LayoutConfig()
@@ -163,7 +167,8 @@ extension LayoutConfig {
             heightStep: c.value(.heightStep, default: d.heightStep),
             minWidthFraction: c.value(.minWidthFraction, default: d.minWidthFraction),
             parkingSliver: c.value(.parkingSliver, default: d.parkingSliver),
-            tabBarHeight: c.value(.tabBarHeight, default: d.tabBarHeight)
+            tabBarHeight: c.value(.tabBarHeight, default: d.tabBarHeight),
+            wrapsAround: c.value(.wrapsAround, default: d.wrapsAround)
         )
     }
 }

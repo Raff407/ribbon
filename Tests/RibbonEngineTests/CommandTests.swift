@@ -15,7 +15,8 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(h.applier.expected[3]?.minX, 505)
         XCTAssertEqual(h.applier.expected[1]?.maxX, 1, "first column parked off the left edge")
         h.manager.perform(.focus(.right))
-        XCTAssertEqual(h.windows.focusCalls, [2, 3], "no wrap-around")
+        XCTAssertEqual(h.windows.focusCalls, [2, 3, 1], "loops back to the first window")
+        XCTAssertEqual(h.strip.viewportOffset, 0, "and scrolls back to it")
     }
 
     func testFirstFocusCommandReturnsFocusToStrip() {
