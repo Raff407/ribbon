@@ -254,6 +254,9 @@ extension WindowManager {
         }
         infos[id] = info
         guard !info.isMinimized, !info.isFullscreen, !info.isAppHidden else { return }
+        // The app may have moved the window while it was away (Electron puts a window it
+        // shows again back on screen), so where Ribbon last put it can't be trusted.
+        services.applier.forget(id)
         let hint = restoreHints.removeValue(forKey: id)
         if let hint, hint.wasFloating {
             world = world.floatingWindow(id)

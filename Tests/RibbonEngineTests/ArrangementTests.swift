@@ -92,6 +92,26 @@ final class ArrangementTests: XCTestCase {
         XCTAssertEqual(h.strip.columns[1].widthFraction, 390.0 / 1010.0, accuracy: 0.0001)
     }
 
+    func testWindowAnAppMovesWhileHiddenIsPutBackWhenShown() throws {
+        let h = Harness()
+        h.windows.add(h.win(1, x: 0))
+        h.windows.add(h.win(2, x: 100))
+        h.windows.add(h.win(3, x: 200, pid: 20))
+        h.windows.focused = 1
+        h.manager.start()
+        h.settle()
+        XCTAssertFalse(onScreen(h.applier.expected[3]), "the third window doesn't fit, so it's parked")
+        h.windows.emit(.appHidden(20))
+        // Unhiding, the app puts its window back on screen by itself (Electron cascades it).
+        h.windows.windows[3]?.frame = CGRect(x: 505, y: 33, width: 495, height: 775)
+        let before = h.applier.applied.count
+        h.windows.emit(.appShown(20))
+        XCTAssertEqual(h.order, [[1], [2], [3]])
+        XCTAssertTrue(h.applier.applied.dropFirst(before).contains { $0[3] != nil },
+                      "Ribbon moves it rather than trusting where it last put it")
+        XCTAssertFalse(onScreen(h.applier.expected[3]))
+    }
+
     func testSwipeShowsCutOffWindowsUntilItSnaps() throws {
         let h = Harness().start([1, 2, 3], focused: 1)
         h.manager.handleGesture(.began)
