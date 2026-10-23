@@ -31,6 +31,24 @@ To try a change in the real app, run `Scripts/build-app.sh` and launch `build/Ri
 
 Bug fixes and new behaviour in `RibbonCore` or `RibbonEngine` should come with a test.
 
+The Accessibility write mailbox, shortcut state and overlay drawing decisions also have
+regression tests that run without managing real windows.
+
+### Layout benchmark
+
+Run the opt-in benchmark in an optimized build:
+
+```bash
+RIBBON_RUN_LAYOUT_BENCHMARK=1 Scripts/swiftw test -c release --filter LayoutBenchmarkTests
+```
+
+It reports median relayout times for 20, 100 and 300 tabbed columns (three windows each),
+using fake platform services. One warm-up sample is discarded, then five samples of 300
+relayouts are measured. There is no machine-dependent timing threshold in CI.
+To compare revisions, run the same `LayoutBenchmarkTests.swift` and `Fakes.swift` on both,
+on the same machine while other builds are idle. These timings measure the engine's work;
+they do not include Accessibility IPC, rendering or real application responsiveness.
+
 ## Reporting bugs
 
 Please include:

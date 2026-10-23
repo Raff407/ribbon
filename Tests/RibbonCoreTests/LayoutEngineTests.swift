@@ -90,6 +90,20 @@ final class LayoutGeometryTests: XCTestCase {
         XCTAssertEqual(t[0].visibility, .hidden(.left))
     }
 
+    func testPlacementsKeepPinnedColumnsOutOfScrollableOffsets() {
+        let strip = Strip(columns: [
+            Column(windows: [1], widthFraction: 0.2, pin: .left),
+            Column(windows: [2, 3], widthFraction: 0.2),
+            Column(windows: [4, 5], activeIndex: 1, widthFraction: 0.2, mode: .tabbed),
+            Column(windows: [6], widthFraction: 0.2, pin: .right),
+        ], focusedColumnIndex: 2, viewportOffset: 50)
+        let placements = LayoutEngine.placements(strip, context: LayoutContext(area: testArea, screenFrame: testScreen), config: testConfig)
+        XCTAssertEqual(placements.map(\.window), [1, 2, 3, 4, 5, 6])
+        XCTAssertEqual(placements.map(\.frame.minX), [0, 152, 152, 354, 354, 808])
+        XCTAssertEqual(placements.map(\.visibility), [.visible, .hidden(.left), .hidden(.left), .hidden(.left), .visible, .visible])
+        XCTAssertEqual(LayoutEngine.stripWidth(strip, area: testArea, config: testConfig), 394)
+    }
+
     func testColumnIndexAtPoint() {
         let p = LayoutEngine.placements(makeStrip([1, 2, 3]), context: LayoutContext(area: testArea, screenFrame: testScreen), config: testConfig)
         XCTAssertEqual(LayoutEngine.columnIndex(at: CGPoint(x: 100, y: 100), placements: p), 0)

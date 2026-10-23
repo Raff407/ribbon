@@ -74,7 +74,10 @@ public final class TrackpadGestureMonitor: GestureSource {
     }
 
     private func armIdleTimer() {
-        idleTimer?.invalidate()
+        if let idleTimer {
+            idleTimer.fireDate = Date().addingTimeInterval(ScrollGestureInterpreter.idleTimeout)
+            return
+        }
         let timer = Timer(timeInterval: ScrollGestureInterpreter.idleTimeout, repeats: false) { [weak self] _ in
             guard let self else { return }
             let (next, events) = self.interpreter.idleTimedOut()

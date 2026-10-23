@@ -25,5 +25,8 @@ let package = Package(
         ),
         .testTarget(name: "RibbonCoreTests", dependencies: ["RibbonCore"]),
         .testTarget(name: "RibbonEngineTests", dependencies: ["RibbonCore", "RibbonEngine"]),
+        .testTarget(name: "RibbonAXTests", dependencies: ["RibbonCore", "RibbonAX"]),
+        .testTarget(name: "RibbonInputTests", dependencies: ["RibbonCore", "RibbonInput"]),
+        .testTarget(name: "RibbonUITests", dependencies: ["RibbonCore", "RibbonUI"]),
     ]
 )

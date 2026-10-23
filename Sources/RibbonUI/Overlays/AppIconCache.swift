@@ -17,6 +17,7 @@ final class AppIconCache {
 
     /// Icon for a window's app; never nil (falls back to the generic app icon).
     func icon(pid: ProcessID, bundleID: String?) -> NSImage {
+        guard pid > 0 || bundleID != nil else { return genericIcon }
         let key = cacheKey(pid: pid, bundleID: bundleID)
         if let cached = cache.object(forKey: key) { return cached }
         let found = NSRunningApplication(processIdentifier: pid)?.icon ?? bundleIcon(bundleID)

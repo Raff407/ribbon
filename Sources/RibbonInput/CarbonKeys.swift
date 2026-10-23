@@ -111,18 +111,18 @@ enum RepeatPolicy {
     }
 }
 
-// MARK: - Modifier hold (⌃⌥)
+// MARK: - Modifier hold
 
-/// Tracks whether ⌃ and ⌥ are both held and reports only transitions.
+/// Tracks the configured shortcut prefix and reports only transitions.
 struct ModifierHoldTracker: Equatable {
-    /// The prefix whose hold is reported (⌃⌥, extra ⇧/⌘ don't matter).
-    static let prefix: ModifierSet = .hyperLite
+    /// Extra modifiers do not cancel a hold; an empty prefix never engages.
+    var prefix: ModifierSet = .hyperLite
 
     private(set) var isHeld = false
 
     /// Returns the updated tracker and the transition to report (nil when unchanged).
     func updated(with modifiers: ModifierSet) -> (ModifierHoldTracker, Bool?) {
-        let held = modifiers.isSuperset(of: Self.prefix)
+        let held = !prefix.isEmpty && modifiers.isSuperset(of: prefix)
         guard held != isHeld else { return (self, nil) }
         var next = self
         next.isHeld = held

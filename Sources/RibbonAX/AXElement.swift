@@ -126,11 +126,7 @@ extension AXUIElement {
 
     /// Position + size (AX space), nil if either is unreadable.
     func frame() -> CGRect? {
-        let values = attributes([kAXPositionAttribute, kAXSizeAttribute])
-        guard let origin = values[kAXPositionAttribute].flatMap(AXValueConversion.point),
-              let size = values[kAXSizeAttribute].flatMap(AXValueConversion.size)
-        else { return nil }
-        return CGRect(origin: origin, size: size)
+        WindowFrameAttributes.read(from: self).frame
     }
 
     func isSettable(_ name: String) -> Bool {

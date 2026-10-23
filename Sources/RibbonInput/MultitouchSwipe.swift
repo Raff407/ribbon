@@ -105,6 +105,7 @@ enum MultitouchRouter {
     private static var accepting = false
     private static var fingers = 3
     private static var lastCounts: [Int: Int] = [:]
+    private static var generation: UInt64 = 0
 
     /// Main thread only.
     static weak var receiver: MultitouchSwipe?
@@ -114,6 +115,7 @@ enum MultitouchRouter {
         accepting = accept
         fingers = count
         lastCounts = [:]
+        generation &+= 1
         lock.unlock()
     }
 
@@ -124,9 +126,16 @@ enum MultitouchRouter {
         let relevant = accepting
             && (frame.fingerCount == fingers || frame.fingerCount != lastCounts[frame.device, default: 0])
         if accepting { lastCounts[frame.device] = frame.fingerCount }
+        let token = generation
         lock.unlock()
         guard relevant else { return }
         DispatchQueue.main.async {
+            // Frames queued before a stop/restart or finger-count change belong to the
+            // previous session; they must not start a gesture in the new one.
+            lock.lock()
+            let current = accepting && generation == token
+            lock.unlock()
+            guard current else { return }
             receiver?.handle(frame)
         }
     }
@@ -140,16 +149,23 @@ enum MultitouchRouter {
             return TouchFrame(device: id, fingerCount: 0, meanX: 0, meanY: 0, time: timestamp)
         }
         let stride = MemoryLayout<MTTouch>.stride
-        let down = (0..<count)
-            .map { touches.load(fromByteOffset: $0 * stride, as: MTTouch.self) }
-            .filter { MTTouch.touchingStates.contains($0.state) }
-        guard !down.isEmpty else {
+        var downCount = 0
+        var sumX = 0.0
+        var sumY = 0.0
+        // This runs for every raw frame, including ordinary pointer movement. Reduce
+        // directly instead of allocating and traversing two arrays on the callback thread.
+        for index in 0..<count {
+            let touch = touches.load(fromByteOffset: index * stride, as: MTTouch.self)
+            guard MTTouch.touchingStates.contains(touch.state) else { continue }
+            downCount += 1
+            sumX += Double(touch.normalized.position.x)
+            sumY += Double(touch.normalized.position.y)
+        }
+        guard downCount > 0 else {
             return TouchFrame(device: id, fingerCount: 0, meanX: 0, meanY: 0, time: timestamp)
         }
-        let n = Double(down.count)
-        let meanX = down.reduce(0) { $0 + Double($1.normalized.position.x) } / n
-        let meanY = down.reduce(0) { $0 + Double($1.normalized.position.y) } / n
-        return TouchFrame(device: id, fingerCount: down.count, meanX: meanX, meanY: meanY, time: timestamp)
+        let n = Double(downCount)
+        return TouchFrame(device: id, fingerCount: downCount, meanX: sumX / n, meanY: sumY / n, time: timestamp)
     }
 }
 
@@ -191,7 +207,7 @@ final class MultitouchSwipe {
 
     func configure(fingers: Int, sensitivity: Double, invert: Bool) {
         let clamped = min(max(fingers, 2), 5)
-        if clamped != self.fingers, tracker.isTracking { cancelGesture() }
+        if clamped != self.fingers { cancelGesture() }
         self.fingers = clamped
         self.sensitivity = sensitivity
         self.invert = invert

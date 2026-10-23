@@ -24,7 +24,7 @@ public final class EventTapHotkeyManager: HotkeyRegistering {
     public var modifierHoldHandler: ((Bool) -> Void)? {
         didSet {
             state.onHold = modifierHoldHandler
-            fallback.modifierHoldHandler = modifierHoldHandler
+            fallback.modifierHoldHandler = usingFallback ? modifierHoldHandler : nil
         }
     }
 
@@ -32,7 +32,6 @@ public final class EventTapHotkeyManager: HotkeyRegistering {
     private let fallback = CarbonHotkeyManager()
     private var usingFallback = false
     private var port: CFMachPort?
-    private var retainedState: Unmanaged<HotkeyTapState>?
 
     public init() {}
 
@@ -51,14 +50,17 @@ public final class EventTapHotkeyManager: HotkeyRegistering {
             case .duplicate: break
             }
         }
-        state.update(table: table, holdModifiers: Self.primaryModifiers(of: bindings))
+        let acceptedBindings = table.map { KeyBinding(command: $0.value, combo: $0.key) }
+        state.update(table: table, holdModifiers: Self.primaryModifiers(of: acceptedBindings))
         guard startTapIfNeeded() else {
             log.error("Keyboard event tap unavailable; using Carbon hotkeys")
             usingFallback = true
+            fallback.modifierHoldHandler = modifierHoldHandler
             return fallback.register(bindings)
         }
         if usingFallback {
             fallback.unregisterAll()
+            fallback.modifierHoldHandler = nil
             usingFallback = false
         }
         log.debug("Registered \(table.count) shortcuts on the event tap")
@@ -68,6 +70,7 @@ public final class EventTapHotkeyManager: HotkeyRegistering {
     public func unregisterAll() {
         state.update(table: [:], holdModifiers: [])
         fallback.unregisterAll()
+        fallback.modifierHoldHandler = nil
         usingFallback = false
     }
 
@@ -80,7 +83,9 @@ public final class EventTapHotkeyManager: HotkeyRegistering {
     /// indicator up.
     static func primaryModifiers(of bindings: [KeyBinding]) -> ModifierSet {
         let counts = Dictionary(bindings.map { ($0.combo.modifiers.subtracting(.shift), 1) }, uniquingKeysWith: +)
-        return counts.filter { !$0.key.isEmpty }.max { $0.value < $1.value }?.key ?? []
+        return counts.filter { !$0.key.isEmpty }.max {
+            $0.value == $1.value ? $0.key.rawValue > $1.key.rawValue : $0.value < $1.value
+        }?.key ?? []
     }
 
     // MARK: Tap lifecycle
@@ -96,17 +101,23 @@ public final class EventTapHotkeyManager: HotkeyRegistering {
             retained.release()
             return false
         }
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, port, 0) else {
+            CFMachPortInvalidate(port)
+            retained.release()
+            return false
+        }
         self.port = port
-        retainedState = retained
-        state.port = port
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, port, 0)
+        state.install(port)
         let state = self.state
         let thread = Thread {
+            // The callback context stays alive until this thread has finished servicing
+            // the source, including any callback already in progress during shutdown.
+            defer { retained.release() }
             guard let runLoop = CFRunLoopGetCurrent() else { return }
-            state.setRunLoop(runLoop)
-            CFRunLoopAddSource(runLoop, source, .commonModes)
-            CGEvent.tapEnable(tap: port, enable: true)
+            guard state.start(on: runLoop, source: source) else { return }
             CFRunLoopRun()
+            CFRunLoopRemoveSource(runLoop, source, .commonModes)
+            state.finished()
         }
         thread.name = "com.raff.ribbon.hotkeys"
         thread.qualityOfService = QualityOfService.userInteractive
@@ -115,14 +126,8 @@ public final class EventTapHotkeyManager: HotkeyRegistering {
     }
 
     private func stopTap() {
-        guard let port else { return }
-        CGEvent.tapEnable(tap: port, enable: false)
-        CFMachPortInvalidate(port)
-        if let runLoop = state.runLoop { CFRunLoopStop(runLoop) }
+        state.stop()
         self.port = nil
-        state.port = nil
-        retainedState?.release()
-        retainedState = nil
     }
 }
 
@@ -133,62 +138,133 @@ final class HotkeyTapState {
     private var holdModifiers: ModifierSet = []
     private var suspended = false
     private var holding = false
-    private(set) var runLoop: CFRunLoop?
-    var port: CFMachPort?
+    private var runLoop: CFRunLoop?
+    private var port: CFMachPort?
+    private var stopped = false
+    private var generation: UInt64 = 0
+    /// Main-thread state can lag behind the tap's `holding` while a release is queued.
+    private var deliveredHolding = false
     /// Called on the main thread.
     var onCommand: ((Command) -> Void)?
     var onHold: ((Bool) -> Void)?
 
     func update(table: [KeyCombo: Command], holdModifiers: ModifierSet) {
         lock.lock()
+        guard self.table != table || self.holdModifiers != holdModifiers else { lock.unlock(); return }
+        generation &+= 1
+        let wasHolding = holding
+        holding = false
         self.table = table
         self.holdModifiers = holdModifiers
         lock.unlock()
+        releaseHold(wasHolding: wasHolding)
     }
 
     func setSuspended(_ value: Bool) {
         lock.lock()
+        guard suspended != value else { lock.unlock(); return }
+        generation &+= 1
         suspended = value
+        let wasHolding = holding
+        holding = false
+        lock.unlock()
+        releaseHold(wasHolding: wasHolding)
+    }
+
+    private func releaseHold(wasHolding: Bool) {
+        guard wasHolding || deliveredHolding else { return }
+        deliveredHolding = false
+        onHold?(false)
+    }
+
+    func install(_ port: CFMachPort) {
+        lock.lock()
+        self.port = port
         lock.unlock()
     }
 
-    func setRunLoop(_ runLoop: CFRunLoop) {
+    /// Serializes startup with shutdown: deinit may happen before the thread starts.
+    func start(on runLoop: CFRunLoop, source: CFRunLoopSource) -> Bool {
         lock.lock()
+        defer { lock.unlock() }
+        guard !stopped, let port else { return false }
         self.runLoop = runLoop
+        CFRunLoopAddSource(runLoop, source, .commonModes)
+        CGEvent.tapEnable(tap: port, enable: true)
+        return true
+    }
+
+    func stop() {
+        lock.lock()
+        stopped = true
+        generation &+= 1
+        let port = self.port
+        let runLoop = self.runLoop
+        self.port = nil
+        lock.unlock()
+        if let runLoop {
+            // A queued stop also works when shutdown wins the race with CFRunLoopRun.
+            CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) { CFRunLoopStop(runLoop) }
+            CFRunLoopWakeUp(runLoop)
+        }
+        if let port {
+            CGEvent.tapEnable(tap: port, enable: false)
+            CFMachPortInvalidate(port)
+        }
+    }
+
+    func finished() {
+        lock.lock()
+        runLoop = nil
         lock.unlock()
     }
 
     /// The command for a key press, or nil to let the event through. `swallowOnly` means
     /// "eat it but do nothing" (OS auto-repeat of a command that shouldn't repeat).
-    func command(forKeyCode keyCode: UInt32, modifiers: ModifierSet, isRepeat: Bool) -> (command: Command, swallowOnly: Bool)? {
+    func command(forKeyCode keyCode: UInt32, modifiers: ModifierSet, isRepeat: Bool) -> (command: Command, swallowOnly: Bool, generation: UInt64)? {
         lock.lock()
         defer { lock.unlock() }
-        guard !suspended, let command = table[KeyCombo(keyCode: keyCode, modifiers: modifiers)] else { return nil }
-        return (command, isRepeat && !RepeatPolicy.isRepeatable(command))
+        guard !stopped, !suspended, let command = table[KeyCombo(keyCode: keyCode, modifiers: modifiers)] else { return nil }
+        return (command, isRepeat && !RepeatPolicy.isRepeatable(command), generation)
     }
 
     /// Hold transitions of the primary modifier set (nil when unchanged).
-    func holdTransition(for modifiers: ModifierSet) -> Bool? {
+    func holdTransition(for modifiers: ModifierSet) -> (held: Bool, generation: UInt64)? {
         lock.lock()
         defer { lock.unlock() }
-        let held = !holdModifiers.isEmpty && modifiers.isSuperset(of: holdModifiers)
+        let held = !stopped && !suspended && !holdModifiers.isEmpty && modifiers.isSuperset(of: holdModifiers)
         guard held != holding else { return nil }
         holding = held
-        return held
+        return (held, generation)
     }
 
     func reenable() {
-        guard let port else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped, let port else { return }
         log.info("Hotkey tap was disabled by macOS; re-enabling")
         CGEvent.tapEnable(tap: port, enable: true)
     }
 
-    func dispatch(_ command: Command) {
-        DispatchQueue.main.async { [weak self] in self?.onCommand?(command) }
+    private func isCurrent(_ token: UInt64) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !stopped && !suspended && generation == token
     }
 
-    func dispatchHold(_ held: Bool) {
-        DispatchQueue.main.async { [weak self] in self?.onHold?(held) }
+    func dispatch(_ command: Command, generation: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isCurrent(generation) else { return }
+            self.onCommand?(command)
+        }
+    }
+
+    func dispatchHold(_ held: Bool, generation: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isCurrent(generation) else { return }
+            self.deliveredHolding = held
+            self.onHold?(held)
+        }
     }
 }
 
@@ -204,8 +280,8 @@ private func hotkeyTapCallback(
         state.reenable()
         return passThrough
     case .flagsChanged:
-        if let held = state.holdTransition(for: ModifierConversion.modifiers(from: event.flags)) {
-            state.dispatchHold(held)
+        if let transition = state.holdTransition(for: ModifierConversion.modifiers(from: event.flags)) {
+            state.dispatchHold(transition.held, generation: transition.generation)
         }
         return passThrough
     case .keyDown:
@@ -215,7 +291,7 @@ private func hotkeyTapCallback(
         guard let match = state.command(forKeyCode: keyCode, modifiers: modifiers, isRepeat: isRepeat) else {
             return passThrough
         }
-        if !match.swallowOnly { state.dispatch(match.command) }
+        if !match.swallowOnly { state.dispatch(match.command, generation: match.generation) }
         return nil
     default:
         return passThrough

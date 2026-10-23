@@ -34,11 +34,13 @@ public enum LayoutEngine {
 
     /// Total width of the non-pinned columns including the gaps between them.
     public static func stripWidth(_ strip: Strip, area: CGRect, config: LayoutConfig) -> Double {
-        let widths = strip.scrollableColumnIndices.map {
-            columnWidth(strip.columns[$0], areaWidth: Double(area.width), config: config)
+        var total = 0.0
+        var count = 0
+        for column in strip.columns where column.pin == nil {
+            total += columnWidth(column, areaWidth: Double(area.width), config: config)
+            count += 1
         }
-        guard !widths.isEmpty else { return 0 }
-        return widths.reduce(0, +) + config.gap * Double(widths.count - 1)
+        return count == 0 ? 0 : total + config.gap * Double(count - 1)
     }
 
     /// Strip-space x range (left, right) of the column at `index` (non-pinned only;
@@ -68,10 +70,12 @@ public enum LayoutEngine {
     public static func placements(_ strip: Strip, context: LayoutContext, config: LayoutConfig) -> [WindowPlacement] {
         let area = context.area
         let scrollable = scrollableArea(strip, area: area, config: config)
-        let spans = stripSpans(strip, area: area, config: config)
         let blocked = context.blockedSides
+        // Columns already arrive in strip order; accumulate their x positions without
+        // building a span dictionary and a flattened window array on every gesture tick.
+        var stripX = 0.0
         var result: [WindowPlacement] = []
-        result.reserveCapacity(strip.allWindows.count)
+        result.reserveCapacity(strip.columns.reduce(0) { $0 + $1.windows.count })
         for (index, column) in strip.columns.enumerated() {
             let width = columnWidth(column, areaWidth: Double(area.width), config: config)
             let x: Double
@@ -84,8 +88,8 @@ public enum LayoutEngine {
                 x = Double(area.maxX) - width
                 visibility = .visible
             case nil:
-                let span = spans[index] ?? 0...width
-                x = Double(scrollable.minX) + span.lowerBound - strip.viewportOffset
+                x = Double(scrollable.minX) + stripX - strip.viewportOffset
+                stripX += width + config.gap
                 visibility = columnVisibility(
                     x: x, width: width, scrollable: scrollable, strip: strip,
                     blocked: blocked, isFocused: index == strip.focusedColumnIndex
@@ -217,6 +221,7 @@ public enum LayoutEngine {
         let screen = context.screenFrame
         let sliver = config.parkingSliver
         var result: [WindowID: FrameTransition] = [:]
+        result.reserveCapacity(placements.count)
         for placement in placements {
             let target = placement.frame
             let current = currentFrames[placement.window]
@@ -313,6 +318,7 @@ extension LayoutEngine {
         let total = column.heightWeights.reduce(0, +)
         var y = Double(area.minY)
         var result: [WindowPlacement] = []
+        result.reserveCapacity(count)
         for (row, window) in column.windows.enumerated() {
             let weight = column.heightWeights.indices.contains(row) ? column.heightWeights[row] : 1
             let height = total > 0 ? available * weight / total : available / Double(count)

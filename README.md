@@ -184,9 +184,9 @@ swift build
 swift test
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). `RibbonCore` and `RibbonEngine` have unit tests
-(about 130 of them). The macOS-facing layers need a real session with the Accessibility
-permission.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Tests cover the core model, engine lifecycle,
+Accessibility write queue, input state and overlay redraw behavior. Live window movement,
+Spaces and device integration still need a real session with the Accessibility permission.
 
 ## Known limitations
 

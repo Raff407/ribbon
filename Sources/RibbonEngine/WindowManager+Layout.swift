@@ -161,9 +161,11 @@ extension WindowManager {
 
     private func tabBars(strip: Strip, placements: [WindowPlacement], area: CGRect, config: LayoutConfig) -> [TabBarModel] {
         guard config.tabBarHeight > 0 else { return [] }
-        return strip.columns.enumerated().compactMap { index, column in
-            guard column.mode == .tabbed,
-                  let active = placements.first(where: { $0.columnIndex == index && $0.row == column.activeIndex }),
+        // Placements are already in column/row order. Visit them once instead of
+        // searching all placements again for each tabbed column.
+        return placements.compactMap { active in
+            let column = strip.columns[active.columnIndex]
+            guard column.mode == .tabbed, active.row == column.activeIndex,
                   !active.visibility.isHidden else { return nil }
             let frame = CGRect(x: active.frame.minX, y: area.minY, width: active.frame.width, height: CGFloat(config.tabBarHeight))
             let tabs = column.windows.map { id in
@@ -174,7 +176,9 @@ extension WindowManager {
     }
 
     /// Puts every hidden window of every known strip back on its display (centred,
-    /// cascading), so nothing stays parked when Ribbon stops.
+    /// cascading), so nothing stays parked when Ribbon stops. A window caught mid-slide
+    /// (an animation cancelled while it was still mostly off-screen) is sent to its
+    /// on-screen spot too.
     func unparkAll() {
         let config = layoutConfig
         var transitions: [WindowID: FrameTransition] = [:]
@@ -190,6 +194,12 @@ extension WindowManager {
                 origin.y = min(max(origin.y, visible.minY), visible.maxY - size.height)
                 transitions[p.window] = FrameTransition(target: CGRect(origin: origin, size: size).roundedToPoints)
                 step = (step + Self.cascadeStep).truncatingRemainder(dividingBy: Self.cascadeStep * 8)
+            }
+            guard isActiveKey(key) else { continue }
+            for p in placements where !p.visibility.isHidden {
+                guard let current = services.applier.expectedFrame(of: p.window), current.width > 0, current.height > 0,
+                      current.intersectionArea(with: display.frame) < current.width * current.height / 2 else { continue }
+                transitions[p.window] = FrameTransition(target: p.frame)
             }
         }
         if !transitions.isEmpty { services.applier.apply(transitions, animation: nil) }

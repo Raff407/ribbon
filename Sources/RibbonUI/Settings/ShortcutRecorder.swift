@@ -34,6 +34,7 @@ final class ShortcutRecorderCoordinator: ObservableObject {
 
     deinit {
         if let monitor { NSEvent.removeMonitor(monitor) }
+        if target != nil { setHotkeysSuspended(false) }
     }
 
     func isRecording(_ candidate: RecordingTarget) -> Bool { target == candidate }

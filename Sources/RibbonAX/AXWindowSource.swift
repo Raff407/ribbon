@@ -63,6 +63,9 @@ public final class AXWindowSource: WindowSource {
         observers.values.forEach { $0.stop() }
         observers = [:]
         registry = WindowRegistry()
+        ownMoveUntil = [:]
+        dirtyFrames = [:]
+        flushDeadline = nil
     }
 
     // MARK: Queries
@@ -293,11 +296,11 @@ public final class AXWindowSource: WindowSource {
             dirtyFrames[id] = nil
             ownMoveUntil[id] = nil
             guard registry.phase(of: id) == .announced, let element = registry.element(for: id) else { continue }
-            if let frame = element.frame() {
+            let attributes = WindowFrameAttributes.read(from: element, includingFullscreen: resized)
+            if let frame = attributes.frame {
                 emit(resized ? .windowResized(id, frame) : .windowMoved(id, frame))
             }
-            if resized {
-                let fullscreen = element.bool(AXAttributeName.fullScreen) ?? false
+            if let fullscreen = attributes.isFullscreen {
                 if fullscreen != registry.isFullscreen(id) {
                     registry = registry.settingFullscreen(fullscreen, for: id)
                     emit(.windowFullscreenChanged(id, fullscreen))

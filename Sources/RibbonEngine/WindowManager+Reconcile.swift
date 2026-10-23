@@ -71,9 +71,8 @@ extension WindowManager {
             world = world.pruning { existing.contains($0) }
             for id in Array(infos.keys) where !existing.contains(id) {
                 infos[id] = nil
-                restoreHints[id] = nil
+                forgetWindowState(id)
                 _ = leaveTabGroup(id)
-                services.applier.forget(id)
             }
             if let focused = focusedWindowID, !existing.contains(focused) { focusedWindowID = nil }
         }
@@ -110,7 +109,7 @@ extension WindowManager {
     func beginNativeTabCheck(_ info: WindowInfo) -> Bool {
         guard let host = tabHost(for: info) else { return false }
         pendingTabChecks.insert(info.id)
-        services.scheduler.schedule(after: 0.15) { [weak self] in
+        debounce("native-tab-\(info.id)", 0.15) { [weak self] in
             guard let self else { return }
             self.pendingTabChecks.remove(info.id)
             guard self.isEnabled, !self.world.isManaged(info.id), self.infos[info.id] != nil else { return }

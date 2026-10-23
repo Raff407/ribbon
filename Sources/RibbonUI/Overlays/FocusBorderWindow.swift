@@ -52,7 +52,11 @@ final class FocusBorderView: NSView {
     private let shape = CAShapeLayer()
 
     var style = FocusBorderStyle(width: 4, color: FocusBorderStyle.fallbackColor, cornerRadius: 10) {
-        didSet { updateLayer(); updatePath() }
+        didSet {
+            guard style != oldValue else { return }
+            updateLayer()
+            updatePath()
+        }
     }
 
     override init(frame frameRect: NSRect) {

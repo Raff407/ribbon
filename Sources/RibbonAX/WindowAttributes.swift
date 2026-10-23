@@ -2,6 +2,26 @@ import AppKit
 import ApplicationServices
 import RibbonCore
 
+/// Frame notifications need only these attributes. Keep unreadable fullscreen state
+/// distinct from `false`, so a timeout cannot manufacture a fullscreen exit.
+struct WindowFrameAttributes: Equatable {
+    var frame: CGRect?
+    var isFullscreen: Bool?
+
+    static func parse(_ values: [String: CFTypeRef]) -> WindowFrameAttributes {
+        let position = values[kAXPositionAttribute].flatMap(AXValueConversion.point)
+        let size = values[kAXSizeAttribute].flatMap(AXValueConversion.size)
+        let frame = position.flatMap { origin in size.map { CGRect(origin: origin, size: $0) } }
+        return WindowFrameAttributes(frame: frame, isFullscreen: values[AXAttributeName.fullScreen].flatMap(AXValueConversion.bool))
+    }
+
+    static func read(from element: AXUIElement, includingFullscreen: Bool = false) -> WindowFrameAttributes {
+        var names = [kAXPositionAttribute, kAXSizeAttribute]
+        if includingFullscreen { names.append(AXAttributeName.fullScreen) }
+        return parse(element.attributes(names))
+    }
+}
+
 /// What `WindowInfo` needs to know about the owning app.
 struct AppMetadata: Equatable {
     var pid: ProcessID

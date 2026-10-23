@@ -118,7 +118,10 @@ public final class OverlayController: OverlayPresenting {
             guard index < visibleBars.count else { window.dismiss(); continue }
             let bar = visibleBars[index]
             let tabIcons = bar.tabs.map { tab in
-                icons.icon(pid: NSRunningApplication.pid(forBundleID: tab.bundleID), bundleID: tab.bundleID)
+                // Consult the cache before asking NSWorkspace for running applications.
+                // Tab-bar frames are updated on every gesture/animation frame.
+                if let bundleID = tab.bundleID { return icons.icon(bundleID: bundleID) }
+                return icons.icon(pid: -1, bundleID: nil)
             }
             window.show(bar, icons: tabIcons)
         }
@@ -139,14 +142,5 @@ public final class OverlayController: OverlayPresenting {
         tabBarWindows.forEach { $0.dismiss() }
         focusFrame = nil
         lastTabBars = []
-    }
-}
-
-private extension NSRunningApplication {
-    /// Tabs carry a bundle id but no pid; the cache only needs a pid when there's no
-    /// bundle id, so any value works then.
-    static func pid(forBundleID bundleID: String?) -> ProcessID {
-        guard let bundleID else { return -1 }
-        return runningApplications(withBundleIdentifier: bundleID).first?.processIdentifier ?? -1
     }
 }

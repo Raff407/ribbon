@@ -11,12 +11,15 @@ private let log = Logger(subsystem: "com.raff.ribbon", category: "Hotkeys")
 /// * One Carbon hotkey per unique combo (signature `'RIBN'`), exclusive so a combo
 ///   already taken by another app fails instead of double-firing.
 /// * Navigation and resize commands auto-repeat while held (0.35 s, then every 0.08 s).
-/// * `modifierHoldHandler` reports ⌃⌥ going down/up via `.flagsChanged` monitors.
+/// * `modifierHoldHandler` reports the shortcut prefix going down/up via `.flagsChanged` monitors.
 ///
 /// Main thread only. Carbon delivers application-target events on the main thread.
 public final class CarbonHotkeyManager: HotkeyRegistering {
     public var commandHandler: ((Command) -> Void)?
     public var modifierHoldHandler: ((Bool) -> Void)? {
+        willSet {
+            if newValue == nil, holdTracker.isHeld { modifierHoldHandler?(false) }
+        }
         didSet { updateFlagsMonitors() }
     }
 
@@ -35,7 +38,7 @@ public final class CarbonHotkeyManager: HotkeyRegistering {
     private var repeatTimer: Timer?
     private var repeatSession: RepeatSession?
 
-    private var holdTracker = ModifierHoldTracker()
+    private var holdTracker = ModifierHoldTracker(prefix: [])
     private var flagsMonitors: [Any] = []
 
     public init() {}
@@ -72,6 +75,9 @@ public final class CarbonHotkeyManager: HotkeyRegistering {
                 break
             }
         }
+        holdTracker = ModifierHoldTracker(prefix: EventTapHotkeyManager.primaryModifiers(
+            of: registrations.values.map(\.binding)
+        ))
         log.debug("Registered \(self.registrations.count) hotkeys, \(failed.count) failed")
         return failed
     }
@@ -84,6 +90,9 @@ public final class CarbonHotkeyManager: HotkeyRegistering {
     /// Unregisters every Carbon hotkey but remembers `wantedBindings`.
     private func releaseRegistrations() {
         stopRepeat()
+        let wasHolding = holdTracker.isHeld
+        holdTracker = ModifierHoldTracker(prefix: [])
+        if wasHolding { modifierHoldHandler?(false) }
         for (id, registration) in registrations {
             let status = UnregisterEventHotKey(registration.ref)
             if status != noErr {
@@ -238,10 +247,11 @@ public final class CarbonHotkeyManager: HotkeyRegistering {
     private func removeFlagsMonitors() {
         flagsMonitors.forEach { NSEvent.removeMonitor($0) }
         flagsMonitors = []
-        holdTracker = ModifierHoldTracker()
+        holdTracker = ModifierHoldTracker(prefix: holdTracker.prefix)
     }
 
     private func handleFlagsChanged(_ flags: NSEvent.ModifierFlags) {
+        guard !isSuspended else { return }
         let (next, transition) = holdTracker.updated(with: ModifierConversion.modifiers(from: flags))
         holdTracker = next
         if let transition {

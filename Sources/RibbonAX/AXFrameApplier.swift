@@ -5,7 +5,7 @@ import RibbonCore
 
 /// Moves windows through the Accessibility API, animating origins with springs driven by
 /// a main-run-loop timer. The main thread only steps springs; every AX write goes to the
-/// owning app's serial queue (`AXWorkQueues`), and position updates are latest-wins, so a
+/// owning app's serial queue (`AXWorkQueues`), and frame updates are latest-wins, so a
 /// slow app drops frames instead of stalling Ribbon. Sizes are applied once up front
 /// (resizing every frame makes apps relayout constantly).
 public final class AXFrameApplier: FrameApplying {
@@ -27,9 +27,8 @@ public final class AXFrameApplier: FrameApplying {
     private var timer: Timer?
     private var lastTick: CFTimeInterval = 0
 
-    /// Latest-wins position mailbox shared with the AX queues.
-    private let mailboxLock = NSLock()
-    private var mailbox: [WindowID: CGPoint] = [:]
+    /// Coalesces full-frame gesture writes as well as animated positions.
+    private let mailbox = FrameWriteMailbox()
 
     /// Apps whose `AXEnhancedUserInterface` was checked since the last restore (main).
     private var enhancedUIChecked: Set<pid_t> = []
@@ -61,9 +60,7 @@ public final class AXFrameApplier: FrameApplying {
         animations[id] = nil
         expected[id] = nil
         sent[id] = nil
-        mailboxLock.lock()
-        mailbox[id] = nil
-        mailboxLock.unlock()
+        mailbox.remove(id)
         if animations.isEmpty { finishAnimating() }
     }
 
@@ -112,7 +109,12 @@ public final class AXFrameApplier: FrameApplying {
             write(start, to: id, element: element, pid: pid)
         }
         let target = transition.target
-        let currentSize = sent[id]?.size ?? element.size(kAXSizeAttribute)
+        // Capture the origin before changing the cached size. A first resize must not
+        // invent a (0, 0) origin. Batch the initial position and size into one AX read.
+        let currentFrame = sent[id] ?? element.frame()
+        let origin = transition.start?.origin ?? currentFrame?.origin ?? target.origin
+        let currentSize = currentFrame?.size
+        if sent[id] == nil { sent[id] = CGRect(origin: origin, size: currentSize ?? target.size) }
         if currentSize.map({ abs($0.width - target.width) > 0.5 || abs($0.height - target.height) > 0.5 }) ?? true {
             writeSize(target.size, to: id, element: element, pid: pid)
         }
@@ -124,7 +126,6 @@ public final class AXFrameApplier: FrameApplying {
             animations[id] = running
             return
         }
-        let origin = transition.start?.origin ?? sent[id]?.origin ?? element.point(kAXPositionAttribute) ?? target.origin
         let spring = OriginSpring(from: origin, to: target.origin)
         if spring.isSettled {
             write(transition.final ?? target, to: id, element: element, pid: pid)
@@ -188,42 +189,38 @@ public final class AXFrameApplier: FrameApplying {
     private func write(_ frame: CGRect, to id: WindowID, element: AXUIElement, pid: pid_t, forceSize: Bool = false) {
         let sizeChanged = forceSize || (sent[id].map { abs($0.width - frame.width) > 0.5 || abs($0.height - frame.height) > 0.5 } ?? true)
         sent[id] = frame
-        mailboxLock.lock()
-        mailbox[id] = nil
-        mailboxLock.unlock()
-        queues.queue(for: pid).async { [weak self] in
-            let result: AXError
-            if sizeChanged {
-                element.setSize(frame.size)
-                result = element.setPosition(frame.origin)
-                element.setSize(frame.size)
-            } else {
-                result = element.setPosition(frame.origin)
-            }
-            if result == .invalidUIElement { DispatchQueue.main.async { self?.forget(id) } }
-        }
+        enqueue(FrameWrite(position: frame.origin, size: sizeChanged ? frame.size : nil),
+                to: id, element: element, pid: pid)
     }
 
     private func writeSize(_ size: CGSize, to id: WindowID, element: AXUIElement, pid: pid_t) {
-        sent[id] = CGRect(origin: sent[id]?.origin ?? .zero, size: size)
-        queues.queue(for: pid).async { element.setSize(size) }
+        if let origin = sent[id]?.origin { sent[id] = CGRect(origin: origin, size: size) }
+        enqueue(FrameWrite(position: nil, size: size), to: id, element: element, pid: pid)
     }
 
-    /// Latest-wins: if a position for this window is still waiting, it's replaced.
     private func writePosition(_ point: CGPoint, to id: WindowID, element: AXUIElement, pid: pid_t) {
         if let size = sent[id]?.size { sent[id] = CGRect(origin: point, size: size) }
-        mailboxLock.lock()
-        let alreadyQueued = mailbox[id] != nil
-        mailbox[id] = point
-        mailboxLock.unlock()
-        guard !alreadyQueued else { return }
+        enqueue(FrameWrite(position: point, size: nil), to: id, element: element, pid: pid)
+    }
+
+    private func enqueue(_ write: FrameWrite, to id: WindowID, element: AXUIElement, pid: pid_t) {
+        guard let token = mailbox.submit(write, for: id) else { return }
         queues.queue(for: pid).async { [weak self] in
-            guard let self else { return }
-            self.mailboxLock.lock()
-            let latest = self.mailbox.removeValue(forKey: id)
-            self.mailboxLock.unlock()
-            guard let latest else { return }
-            if element.setPosition(latest) == .invalidUIElement { DispatchQueue.main.async { self.forget(id) } }
+            guard let self, let latest = self.mailbox.take(for: id, token: token) else { return }
+            var invalid = false
+            if let size = latest.size { invalid = element.setSize(size) == .invalidUIElement }
+            if let point = latest.position {
+                invalid = element.setPosition(point) == .invalidUIElement || invalid
+                // Apps may clamp the first size on the old screen. Reapply at the new
+                // position, including forced final sizes on otherwise same-size moves.
+                if let size = latest.size { invalid = element.setSize(size) == .invalidUIElement || invalid }
+            }
+            if invalid {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let current = self.source.element(for: id), CFEqual(current, element) else { return }
+                    self.forget(id)
+                }
+            }
         }
     }
 

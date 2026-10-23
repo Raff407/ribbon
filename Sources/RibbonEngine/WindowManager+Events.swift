@@ -12,7 +12,7 @@ extension WindowManager {
         case .windowFocused(let id): windowFocused(id)
         case .windowMoved(let id, let frame), .windowResized(let id, let frame): windowFrameChanged(id, frame: frame)
         case .windowMinimized(let id): park(id, reason: .minimized)
-        case .windowDeminimized(let id): unpark(id, focus: true)
+        case .windowDeminimized(let id): unpark(id, focus: true, clearing: .minimized)
         case .windowTitleChanged(let id, let title): titleChanged(id, title: title)
         case .windowFullscreenChanged(let id, let isFullscreen): fullscreenChanged(id, isFullscreen: isFullscreen)
         case .appLaunched: break
@@ -60,14 +60,11 @@ extension WindowManager {
     }
 
     func windowDestroyed(_ id: WindowID) {
-        services.applier.forget(id)
-        restoreHints[id] = nil
-        pendingTabChecks.remove(id)
-        lastLayoutTime[id] = nil
-        widthAdoptions[id] = nil
+        forgetWindowState(id)
         defer { infos[id] = nil }
         if let sibling = leaveTabGroup(id), let key = world.key(containing: id) {
             world = world.setting(world.strip(key).replacing(id, with: sibling), for: key)
+            if focusedWindowID == id { focusedWindowID = sibling }
             relayout(animated: true)
             return
         }
@@ -79,8 +76,9 @@ extension WindowManager {
         if let key {
             storeRevealed(world.strip(key), for: key)
             if wasFocused, isActiveKey(key), let next = world.strip(key).focusedWindow {
-                services.scheduler.schedule(after: 0.05) { [weak self] in
-                    guard let self, self.world.strip(key).focusedWindow == next else { return }
+                debounce("close-focus-\(id)", 0.05) { [weak self] in
+                    guard let self, self.isEnabled, self.isActiveKey(key),
+                          self.world.strip(key).focusedWindow == next else { return }
                     self.focus(next)
                     self.relayout(animated: true)
                 }
@@ -94,8 +92,7 @@ extension WindowManager {
         let windows = infos.values.filter { $0.pid == pid }.map(\.id)
         guard !windows.isEmpty else { return }
         for id in windows {
-            services.applier.forget(id)
-            restoreHints[id] = nil
+            forgetWindowState(id)
             _ = leaveTabGroup(id)
             infos[id] = nil
             world = world.removing(id)
@@ -104,6 +101,21 @@ extension WindowManager {
         revealAllActiveStrips()
         relayout(animated: true)
         stateChangeHandler?()
+    }
+
+    /// Release both delayed work and per-window caches on every removal path.
+    func forgetWindowState(_ id: WindowID) {
+        services.applier.forget(id)
+        restoreHints[id] = nil
+        pendingTabChecks.remove(id)
+        lastLayoutTime[id] = nil
+        widthAdoptions[id] = nil
+        for name in ["native-tab-\(id)", "fullscreen-\(id)", "app-move-\(id)", "close-focus-\(id)"] {
+            debounces.removeValue(forKey: name)?.cancel()
+        }
+        if pendingFocus?.window == id { pendingFocus = nil }
+        if suppressRevealFor == id { suppressRevealFor = nil }
+        if draggedWindow == id { draggedWindow = nil }
     }
 
     // MARK: Focus
@@ -208,10 +220,17 @@ extension WindowManager {
     }
 
     /// Puts a parked window back where it was (or treats it as new).
-    func unpark(_ id: WindowID, focus: Bool, relayoutAfter: Bool = true) {
-        let info = services.windows.windowInfo(id) ?? infos[id]
-        if let info { infos[id] = info }
-        infos[id]?.isMinimized = false
+    func unpark(_ id: WindowID, focus: Bool, relayoutAfter: Bool = true, clearing reason: ParkReason? = nil) {
+        guard isEnabled, !world.isManaged(id), var info = services.windows.windowInfo(id) ?? infos[id] else { return }
+        // The event clears only its own state; showing an app must not unminimize it.
+        switch reason {
+        case .minimized: info.isMinimized = false
+        case .fullscreen: info.isFullscreen = false
+        case .hidden: info.isAppHidden = false
+        case nil: break
+        }
+        infos[id] = info
+        guard !info.isMinimized, !info.isFullscreen, !info.isAppHidden else { return }
         let hint = restoreHints.removeValue(forKey: id)
         if let hint, hint.wasFloating {
             world = world.floatingWindow(id)
@@ -219,9 +238,7 @@ extension WindowManager {
             world = world.tiling(id, into: hint.key, position: .at(hint.column),
                                  widthFraction: settings.layout.defaultWidthFraction, focus: focus)
             if focus { storeRevealed(world.strip(hint.key), for: hint.key) }
-        } else if var info {
-            info.isMinimized = false
-            info.isFullscreen = false
+        } else {
             adopt(info, focus: focus)
         }
         if focus { focusedWindowID = id }
@@ -230,14 +247,21 @@ extension WindowManager {
 
     func fullscreenChanged(_ id: WindowID, isFullscreen: Bool) {
         infos[id]?.isFullscreen = isFullscreen
+        debounces.removeValue(forKey: "fullscreen-\(id)")?.cancel()
         if isFullscreen {
             park(id, reason: .fullscreen)
         } else if restoreHints[id] != nil {
-            services.scheduler.schedule(after: 0.5) { [weak self] in self?.unpark(id, focus: true) }
+            debounce("fullscreen-\(id)", 0.5) { [weak self] in
+                guard let self, self.infos[id]?.isFullscreen == false, self.restoreHints[id] != nil else { return }
+                self.unpark(id, focus: true, clearing: .fullscreen)
+            }
         }
     }
 
     func appHidden(_ pid: ProcessID) {
+        // Mark every window of the app, including ones already off the strip (minimized,
+        // fullscreen), so they wait for the app to come back even if AX can't be read.
+        for id in infos.keys where infos[id]?.pid == pid { infos[id]?.isAppHidden = true }
         let windows = infos.values.filter { $0.pid == pid && world.isManaged($0.id) }.map(\.id)
         guard !windows.isEmpty else { return }
         windows.forEach { park($0, reason: .hidden, relayoutAfter: false) }
@@ -246,9 +270,11 @@ extension WindowManager {
     }
 
     func appShown(_ pid: ProcessID) {
-        let windows = restoreHints.filter { infos[$0.key]?.pid == pid }.sorted { $0.value.sequence > $1.value.sequence }.map(\.key)
+        for id in infos.keys where infos[id]?.pid == pid && restoreHints[id] == nil { infos[id]?.isAppHidden = false }
+        let windows = restoreHints.filter { infos[$0.key]?.pid == pid }
+            .sorted { $0.value.sequence > $1.value.sequence }.map(\.key)
         guard !windows.isEmpty else { return }
-        windows.forEach { unpark($0, focus: false, relayoutAfter: false) }
+        windows.forEach { unpark($0, focus: false, relayoutAfter: false, clearing: .hidden) }
         relayout(animated: true)
     }
 

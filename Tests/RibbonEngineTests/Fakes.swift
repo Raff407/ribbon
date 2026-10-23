@@ -12,6 +12,8 @@ final class FakeWindowSource: WindowSource {
     var onScreenOverride: Set<WindowID>?
     /// Windows AX can't see right now (other Space) but that still exist.
     var hiddenFromAX: Set<WindowID> = []
+    /// Individual AX reads can fail even while cached/window-server data remains.
+    var unavailableInfo: Set<WindowID> = []
     private(set) var focusCalls: [WindowID] = []
     private(set) var started = false
     private(set) var scanCount = 0
@@ -22,7 +24,7 @@ final class FakeWindowSource: WindowSource {
         scanCount += 1
         return windows.values.filter { !hiddenFromAX.contains($0.id) }.sorted { $0.id < $1.id }
     }
-    func windowInfo(_ id: WindowID) -> WindowInfo? { windows[id] }
+    func windowInfo(_ id: WindowID) -> WindowInfo? { unavailableInfo.contains(id) ? nil : windows[id] }
     func focusedWindow() -> WindowID? { focused }
     func focus(_ id: WindowID) {
         focusCalls.append(id)
@@ -38,18 +40,27 @@ final class FakeWindowSource: WindowSource {
 }
 
 final class FakeApplier: FrameApplying {
+    var recordsApplications = true
     private(set) var applied: [[WindowID: FrameTransition]] = []
     private(set) var animatedFlags: [Bool] = []
     var expected: [WindowID: CGRect] = [:]
     var animating = false
+    var framesAfterCancelling: [WindowID: CGRect] = [:]
     private(set) var cancelCount = 0
 
     func apply(_ transitions: [WindowID: FrameTransition], animation: AnimationSpec?) {
-        applied.append(transitions)
-        animatedFlags.append(animation != nil)
+        if recordsApplications {
+            applied.append(transitions)
+            animatedFlags.append(animation != nil)
+        }
         for (id, t) in transitions { expected[id] = t.settledFrame }
     }
-    func cancelAll() { cancelCount += 1 }
+    func cancelAll() {
+        cancelCount += 1
+        expected.merge(framesAfterCancelling) { _, stopped in stopped }
+        framesAfterCancelling = [:]
+        animating = false
+    }
     var isAnimating: Bool { animating }
     func expectedFrame(of id: WindowID) -> CGRect? { expected[id] }
     func forget(_ id: WindowID) { expected[id] = nil }

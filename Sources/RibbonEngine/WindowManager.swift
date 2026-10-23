@@ -97,6 +97,7 @@ public final class WindowManager {
     /// unregisters everything. Safe to call twice.
     public func stop() {
         guard isStarted else { return }
+        services.applier.cancelAll()
         if isEnabled { unparkAll() }
         services.applier.finishPendingWrites()
         saveNow()
@@ -124,6 +125,7 @@ public final class WindowManager {
             relayout(animated: false, force: true)
             scheduleReconcileTimer()
         } else {
+            services.applier.cancelAll()
             unparkAll()
             saveNow()
             services.overlays.hideAll()
@@ -230,6 +232,13 @@ public final class WindowManager {
         reconcileTimer = nil
         debounces.values.forEach { $0.cancel() }
         debounces = [:]
+        pendingTabChecks.removeAll()
+        pendingFocus = nil
+        suppressRevealFor = nil
+        draggedWindow = nil
+        gestureKey = nil
+        modifierHeld = false
+        indicatorShownPersistent = false
     }
 
     // MARK: Persistence

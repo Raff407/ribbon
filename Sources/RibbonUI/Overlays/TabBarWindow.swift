@@ -48,7 +48,18 @@ final class TabBarView: NSView {
 
     var onTabClick: ((WindowID) -> Void)?
     var content = Content(model: TabBarModel(frame: .zero, tabs: [], activeIndex: 0), icons: []) {
-        didSet { needsDisplay = true }
+        didSet {
+            if Self.needsRedraw(content, after: oldValue) { needsDisplay = true }
+        }
+    }
+
+    /// Moving a tab bar doesn't change its local drawing, so a viewport scroll doesn't
+    /// redraw every title and icon; tabs, the active tab, size or icons changing does.
+    static func needsRedraw(_ content: Content, after old: Content) -> Bool {
+        content.model.tabs != old.model.tabs
+            || content.model.activeIndex != old.model.activeIndex
+            || content.model.frame.size != old.model.frame.size
+            || content.icons != old.icons
     }
 
     private var pressedIndex: Int?
