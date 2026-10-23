@@ -15,9 +15,11 @@ final class LayoutBenchmarkTests: XCTestCase {
         for columnCount in [20, 100, 300] {
             let h = Harness().start()
             h.applier.recordsApplications = false
-            let columns = (0..<columnCount).map { index in
-                Column(windows: [WindowID(index * 3 + 1), WindowID(index * 3 + 2), WindowID(index * 3 + 3)],
-                       widthFraction: 0.3, mode: .tabbed)
+            var columns: [Column] = []
+            for index in 0..<columnCount {
+                let first = WindowID(index * 3 + 1)
+                let windows: [WindowID] = [first, first + 1, first + 2]
+                columns.append(Column(windows: windows, widthFraction: 0.3, mode: .tabbed))
             }
             for column in columns {
                 for id in column.windows { h.manager.infos[id] = h.win(id) }
