@@ -124,6 +124,37 @@ final class StripInsertRemoveTests: XCTestCase {
         XCTAssertEqual(s.movingColumn(from: 0, to: 2), s, "pinned column can't move")
     }
 
+    func testDragResizeWorksLikeADivider() {
+        let s = makeStrip([1, 2, 3], width: 0.5)              // 495 + 10 + 495 fill the 1000pt area
+        let fraction = { (w: Double) in (w + 10) / 1010 }
+        let wider = s.resizingByDrag(1, toWidth: 600, edge: .right, areaWidth: 1000, visibleColumns: [0, 1], adjustNeighbour: true, config: testConfig)
+        XCTAssertEqual(wider.columns[0].widthFraction, fraction(600), accuracy: 1e-9)
+        XCTAssertEqual(wider.columns[1].widthFraction, fraction(390), accuracy: 1e-9)
+        XCTAssertEqual(wider.columns[2].widthFraction, 0.5, "off-screen column untouched")
+        let p = LayoutEngine.placements(wider, context: LayoutContext(area: testArea, screenFrame: testScreen), config: testConfig)
+        XCTAssertEqual(p[1].frame.maxX, 1000, "the neighbour still ends at the screen edge")
+        XCTAssertEqual(p[1].visibility, .visible)
+
+        let leftEdge = s.resizingByDrag(2, toWidth: 600, edge: .left, areaWidth: 1000, visibleColumns: [0, 1], adjustNeighbour: true, config: testConfig)
+        XCTAssertEqual(leftEdge.columns[0].widthFraction, fraction(390), accuracy: 1e-9, "dragging the left edge takes from the left neighbour")
+        XCTAssertEqual(leftEdge.columns[1].widthFraction, fraction(600), accuracy: 1e-9)
+
+        let outerEdge = s.resizingByDrag(1, toWidth: 600, edge: .left, areaWidth: 1000, visibleColumns: [0, 1], adjustNeighbour: true, config: testConfig)
+        XCTAssertEqual(outerEdge.columns[1].widthFraction, fraction(390), accuracy: 1e-9, "no neighbour on the dragged side → the other one")
+
+        let limit = s.resizingByDrag(1, toWidth: 980, edge: .right, areaWidth: 1000, visibleColumns: [0, 1], adjustNeighbour: true, config: testConfig)
+        XCTAssertEqual(limit.columns[1].widthFraction, 0.1, accuracy: 1e-9, "neighbour stops at its minimum")
+        XCTAssertEqual(limit.columns[0].widthFraction, fraction(495 + 495 - 91), accuracy: 1e-9, "and so does the resize")
+
+        let alone = s.resizingByDrag(1, toWidth: 600, edge: .right, areaWidth: 1000, visibleColumns: [0], adjustNeighbour: true, config: testConfig)
+        XCTAssertEqual(alone.columns[1].widthFraction, 0.5, "hidden neighbour isn't resized")
+        let off = s.resizingByDrag(1, toWidth: 600, edge: .right, areaWidth: 1000, visibleColumns: [0, 1], adjustNeighbour: false, config: testConfig)
+        XCTAssertEqual(off.columns[1].widthFraction, 0.5, "setting off → only the dragged column changes")
+        XCTAssertEqual(off.columns[0].widthFraction, fraction(600), accuracy: 1e-9)
+        XCTAssertEqual(s.resizingByDrag(42, toWidth: 600, edge: .right, areaWidth: 1000, visibleColumns: [0, 1], adjustNeighbour: true, config: testConfig), s)
+        [wider, leftEdge, limit].forEach { assertInvariants($0) }
+    }
+
     func testSettingWidthAndHeightShare() {
         var s = makeStrip([1, 2])
         s.columns[0].isFullWidth = true

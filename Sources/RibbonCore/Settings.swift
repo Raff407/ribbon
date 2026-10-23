@@ -267,6 +267,8 @@ public struct BehaviorSettings: Equatable, Codable, Sendable {
     public var floatDialogs: Bool
     /// Seconds between background consistency sweeps (0 = off).
     public var reconcileInterval: Double
+    /// Dragging the edge between two visible windows resizes both, like a divider.
+    public var resizeAdjustsNeighbour: Bool
 
     public init(
         newWindowPosition: NewWindowPosition = .afterFocused,
@@ -275,7 +277,8 @@ public struct BehaviorSettings: Equatable, Codable, Sendable {
         restoreSession: Bool = true,
         floatFixedSizeWindows: Bool = true,
         floatDialogs: Bool = true,
-        reconcileInterval: Double = 3
+        reconcileInterval: Double = 3,
+        resizeAdjustsNeighbour: Bool = true
     ) {
         self.newWindowPosition = newWindowPosition
         self.focusFollowsMouse = focusFollowsMouse
@@ -284,6 +287,7 @@ public struct BehaviorSettings: Equatable, Codable, Sendable {
         self.floatFixedSizeWindows = floatFixedSizeWindows
         self.floatDialogs = floatDialogs
         self.reconcileInterval = reconcileInterval
+        self.resizeAdjustsNeighbour = resizeAdjustsNeighbour
     }
 }
 
@@ -469,7 +473,8 @@ extension BehaviorSettings {
             restoreSession: c.value(.restoreSession, default: d.restoreSession),
             floatFixedSizeWindows: c.value(.floatFixedSizeWindows, default: d.floatFixedSizeWindows),
             floatDialogs: c.value(.floatDialogs, default: d.floatDialogs),
-            reconcileInterval: c.value(.reconcileInterval, default: d.reconcileInterval)
+            reconcileInterval: c.value(.reconcileInterval, default: d.reconcileInterval),
+            resizeAdjustsNeighbour: c.value(.resizeAdjustsNeighbour, default: d.resizeAdjustsNeighbour)
         )
     }
 }

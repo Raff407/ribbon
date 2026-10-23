@@ -34,6 +34,9 @@ struct LayoutPane: View {
                           range: Range.step, step: 0.05, format: ValueFormat.percent)
                 SliderRow(title: "Taller / shorter step", value: store.binding(\.layout.heightStep),
                           range: Range.step, step: 0.05, format: ValueFormat.percent)
+                ToggleRow(title: "Resizing a window resizes its neighbour",
+                          detail: "Drag the edge between two windows like a divider: the other window gives up the space, so neither gets pushed off-screen.",
+                          isOn: store.binding(\.behavior.resizeAdjustsNeighbour))
             }
         }
         .formStyle(.grouped)

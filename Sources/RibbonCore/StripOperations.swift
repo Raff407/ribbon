@@ -128,6 +128,36 @@ public extension Strip {
         return Strip(columns: newColumns, focusedColumnIndex: focusedColumnIndex, viewportOffset: viewportOffset)
     }
 
+    /// A mouse resize of `window`'s column to `width` points by dragging its `edge`.
+    ///
+    /// When the column next to that edge is in `visibleColumns`, it gives up (or takes
+    /// back) the difference so the pair keeps its combined width: the edge between two
+    /// windows works like a divider and nothing gets pushed off-screen. If the dragged
+    /// edge has no visible neighbour, the neighbour on the other side is used instead.
+    /// With no visible neighbour (or `adjustNeighbour` false) only this column changes.
+    /// Widths stay within `config.minWidthFraction ... 1`; when the neighbour reaches its
+    /// minimum, the resize stops there.
+    func resizingByDrag(
+        _ window: WindowID, toWidth width: Double, edge: Side, areaWidth: Double,
+        visibleColumns: Set<Int>, adjustNeighbour: Bool, config: LayoutConfig
+    ) -> Strip {
+        guard let column = location(of: window)?.column else { return self }
+        func fraction(_ points: Double) -> Double { (points + config.gap) / (areaWidth + config.gap) }
+        let limits = (config.minWidthFraction * (areaWidth + config.gap) - config.gap)...areaWidth
+        let current = LayoutEngine.columnWidth(columns[column], areaWidth: areaWidth, config: config)
+        var target = width.clamped(to: limits)
+        let sides = edge == .right ? [column + 1, column - 1] : [column - 1, column + 1]
+        let neighbour = adjustNeighbour ? sides.first { columns.indices.contains($0) && visibleColumns.contains($0) } : nil
+        var result = self
+        if let neighbour {
+            let neighbourWidth = LayoutEngine.columnWidth(columns[neighbour], areaWidth: areaWidth, config: config)
+            let newNeighbourWidth = (neighbourWidth - (target - current)).clamped(to: limits)
+            target = (current + neighbourWidth - newNeighbourWidth).clamped(to: limits)
+            result = result.settingWidthFraction(fraction(newNeighbourWidth), ofColumnContaining: columns[neighbour].windows[0], config: config)
+        }
+        return result.settingWidthFraction(fraction(target), ofColumnContaining: window, config: config)
+    }
+
     /// Sets the height share (0...1 of the column) of `window` in a stacked column with
     /// more than one window, taking/giving the difference proportionally from/to the
     /// others; no share below 0.1. Used when the user resizes a stacked window.

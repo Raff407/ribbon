@@ -20,7 +20,7 @@ extension WindowManager {
         let resizedWidth = abs(frame.width - expected.width) > tolerance
         let resizedHeight = abs(frame.height - expected.height) > tolerance
         if resizedWidth || resizedHeight {
-            if resizedWidth { adoptWidth(frame.width, of: id, key: key, display: display) }
+            if resizedWidth { adoptDraggedWidth(frame, expected: expected, of: id, key: key, display: display) }
             if resizedHeight { adoptHeight(frame.height, of: id, key: key, display: display) }
             return
         }
@@ -37,6 +37,20 @@ extension WindowManager {
         if let column = LayoutEngine.columnIndex(at: mouse, placements: placements) {
             world = world.setting(strip.movingColumn(from: loc.column, to: column), for: key)
         }
+    }
+
+    /// The edge that moved more is the one the user dragged; a visible neighbour on that
+    /// side absorbs the change (see `Strip.resizingByDrag`).
+    private func adoptDraggedWidth(_ frame: CGRect, expected: CGRect, of id: WindowID, key: StripKey, display: DisplayInfo) {
+        let edge: Side = abs(frame.minX - expected.minX) > abs(frame.maxX - expected.maxX) ? .left : .right
+        let strip = world.strip(key)
+        let visible = Set(LayoutEngine.placements(strip, context: layoutContext(display), config: layoutConfig)
+            .filter { !$0.visibility.isHidden }.map(\.columnIndex))
+        let resized = strip.resizingByDrag(
+            id, toWidth: Double(frame.width), edge: edge, areaWidth: Double(workingArea(display).width),
+            visibleColumns: visible, adjustNeighbour: settings.behavior.resizeAdjustsNeighbour, config: layoutConfig
+        )
+        world = world.setting(LayoutEngine.clampViewport(resized, area: workingArea(display), config: layoutConfig), for: key)
     }
 
     private func adoptHeight(_ height: CGFloat, of id: WindowID, key: StripKey, display: DisplayInfo) {

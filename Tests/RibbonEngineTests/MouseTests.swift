@@ -42,6 +42,20 @@ final class MouseTests: XCTestCase {
         XCTAssertEqual(weights[1] / weights.reduce(0, +), 500.0 / 765.0, accuracy: 1e-3)
     }
 
+    func testDragResizingTheEdgeBetweenTwoWindowsKeepsBothOnScreen() {
+        let h = Harness().start([1, 2], focused: 1)
+        var wider = h.applier.expected[1]!
+        wider.size.width = 600
+        h.windows.windows[1]?.frame = wider
+        h.input.leftDown = true
+        h.windows.emit(.windowResized(1, wider))
+        h.input.leftDown = false
+        h.input.mouseUpHandler?()
+        XCTAssertEqual(h.applier.expected[1]?.width, 600)
+        XCTAssertEqual(h.applier.expected[2]?.minX, 610)
+        XCTAssertEqual(h.applier.expected[2]?.maxX, 1000, "the other window shrank instead of sliding off-screen")
+    }
+
     func testDragToAnotherDisplay() {
         let h = Harness(displays: [Harness.mainDisplay, Harness.rightDisplay])
         h.windows.add(h.win(1, x: 0))

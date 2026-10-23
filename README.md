@@ -18,8 +18,8 @@ learn. It only needs the Accessibility permission, and you never have to disable
   a clickable tab bar.
 - **Pinning:** pin a column to the left or right edge while the rest of the strip scrolls.
 - **Trackpad:** hold a modifier and swipe sideways, or optionally use a bare 3/4-finger swipe.
-- **Mouse:** drag a window onto another column to reorder, or resize it to set the column's
-  width.
+- **Mouse:** drag a window onto another column to reorder. Drag the edge between two windows
+  to resize both, like a divider.
 - **Strip indicator:** a frosted bar showing each column's app icon and where you are. While
   you hold the shortcut key you can click or drag its tiles.
 - **Focus border and dimming:** optional, off by default.
