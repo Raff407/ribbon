@@ -14,6 +14,8 @@ public final class SettingsWindowController {
     private let actions: AppActions
     private let recorder: ShortcutRecorderCoordinator
     private var window: NSWindow?
+    /// Called once when the window is created (the app registers it as a strip window).
+    public var windowCreatedHandler: ((NSWindow) -> Void)?
     private var closeObserver: NSObjectProtocol?
     private var resignObserver: NSObjectProtocol?
 
@@ -73,6 +75,7 @@ public final class SettingsWindowController {
             self?.recorder.stop()
         }
         self.window = window
+        windowCreatedHandler?(window)
         return window
     }
 }

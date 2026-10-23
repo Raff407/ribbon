@@ -43,13 +43,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = SettingsStore()
         let services = AppServices()
         let manager = WindowManager(services: services.engineServices, settings: store.settings,
-                                    ownBundleID: Bundle.main.bundleIdentifier)
+                                    // nil: Ribbon only reports its own settings window (never
+                                    // its overlays), and that should tile like any window.
+                                    ownBundleID: nil)
         self.store = store
         self.services = services
         self.manager = manager
 
         let actions = makeActions(manager: manager, services: services)
         settingsWindow = SettingsWindowController(store: store, actions: actions)
+        settingsWindow?.windowCreatedHandler = { [weak services] in services?.windows.registerLocalWindow($0) }
         menuBar = MenuBarController(store: store, actions: actions)
         manager.stateChangeHandler = { [weak self] in self?.menuBar?.refresh() }
         manager.openSettingsHandler = { [weak self] in self?.settingsWindow?.show() }

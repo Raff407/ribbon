@@ -32,8 +32,19 @@ public final class AXWindowSource: WindowSource {
     private static let observerRetryDelays: [TimeInterval] = [0.1, 0.3, 0.6, 1.2, 2.4]
     private static let slowRetryDelay: TimeInterval = 5
 
+    /// Ribbon's own windows on the strip (the settings window), handled without AX.
+    let local = LocalWindowTracker()
+
     public init(ownPID: pid_t = getpid()) {
         self.ownPID = ownPID
+        local.emit = { [weak self] in self?.emit($0) }
+        local.isOwnMove = { [weak self] id in (self?.ownMoveUntil[id] ?? 0) > CACurrentMediaTime() }
+    }
+
+    /// Makes one of Ribbon's own windows a normal strip window while it's shown, so you
+    /// can cycle onto it. Ribbon's overlays are never registered.
+    public func registerLocalWindow(_ window: NSWindow) {
+        local.register(window)
     }
 
     deinit {
@@ -82,10 +93,12 @@ public final class AXWindowSource: WindowSource {
                 result.append(info)
             }
         }
+        result += local.visibleInfos()
         return result
     }
 
     public func windowInfo(_ id: WindowID) -> WindowInfo? {
+        if let info = local.info(id) { return info }
         guard let element = registry.element(for: id), let pid = registry.pid(of: id),
               let app = AppMetadata.current(pid: pid) else { return nil }
         return WindowInfoFactory.read(id: id, element: element, app: app)
@@ -93,6 +106,8 @@ public final class AXWindowSource: WindowSource {
 
     public func focusedWindow() -> WindowID? {
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
+        // Never ask Ribbon itself through AX (the call would wait on this thread).
+        if pid == ownPID { return local.keyWindowID() }
         let appElement = observers[pid]?.appElement ?? AXUIElementCreateApplication(pid)
         return appElement.element(kAXFocusedWindowAttribute)?.windowID
     }
@@ -100,6 +115,7 @@ public final class AXWindowSource: WindowSource {
     /// Runs on the app's AX queue (behind its pending moves) so a busy app can't stall
     /// the key press that asked for it.
     public func focus(_ id: WindowID) {
+        if local.contains(id) { return local.focus(id) }
         guard let element = registry.element(for: id), let pid = registry.pid(of: id) else {
             AXLog.windows.debug("focus: unknown window \(id)")
             return
@@ -121,7 +137,10 @@ public final class AXWindowSource: WindowSource {
 
     public func onScreenWindowIDs() -> Set<WindowID> { WindowList.onScreenWindowIDs() }
 
-    public func frame(of id: WindowID) -> CGRect? { registry.element(for: id)?.frame() }
+    public func frame(of id: WindowID) -> CGRect? {
+        if let window = local.window(for: id) { return LocalWindowTracker.axFrame(of: window) }
+        return registry.element(for: id)?.frame()
+    }
 
     // MARK: Internal accessors for the applier
 

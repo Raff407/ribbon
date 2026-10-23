@@ -83,7 +83,10 @@ public final class AXFrameApplier: FrameApplying {
         restoreWorkItem?.cancel()
         restoreWorkItem = nil
         for (id, transition) in transitions {
-            guard let element = source.element(for: id), let pid = source.pid(of: id) else { continue }
+            guard let element = source.element(for: id), let pid = source.pid(of: id) else {
+                applyLocal(id, transition)
+                continue
+            }
             expected[id] = transition.settledFrame
             suspendEnhancedUI(pid)
             source.noteOwnMove(id)
@@ -99,6 +102,16 @@ public final class AXFrameApplier: FrameApplying {
         } else {
             startTimer()
         }
+    }
+
+    /// Ribbon's own window: moved straight to its settled frame with AppKit (no AX, no
+    /// spring; it's rarely on screen while things scroll).
+    private func applyLocal(_ id: WindowID, _ transition: FrameTransition) {
+        guard source.local.contains(id) else { return }
+        expected[id] = transition.settledFrame
+        animations[id] = nil
+        source.noteOwnMove(id)
+        source.local.setFrame(id, to: transition.settledFrame)
     }
 
     // MARK: Animation
