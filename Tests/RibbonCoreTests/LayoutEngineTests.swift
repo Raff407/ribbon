@@ -184,6 +184,38 @@ final class ViewportTests: XCTestCase {
     }
 }
 
+final class LoopAroundTransitionTests: XCTestCase {
+    func testLoopAroundKeepsTravellingInOneDirection() {
+        // 4 half-width columns; viewport showed columns 2 and 3, focus wraps to column 0.
+        let context = LayoutContext(area: testArea, screenFrame: testScreen)
+        let after = makeStrip([1, 2, 3, 4], width: 0.5, focused: 0, offset: 0)
+        let p = LayoutEngine.placements(after, context: context, config: testConfig)
+        let current: [WindowID: CGRect] = [
+            1: CGRect(x: -494, y: 799, width: 495, height: 800),   // parked left
+            2: CGRect(x: -494, y: 799, width: 495, height: 800),
+            3: CGRect(x: 0, y: 0, width: 495, height: 800),        // were on screen
+            4: CGRect(x: 505, y: 0, width: 495, height: 800),
+        ]
+        let t = LayoutEngine.transitions(p, currentFrames: current, context: context, config: testConfig, entering: .right)
+        XCTAssertEqual(t[1]?.start?.minX, 999, "arrives from the right edge")
+        XCTAssertEqual(t[2]?.start?.minX, 999)
+        XCTAssertEqual(t[3]?.target.minX, -494, "leaves through the left edge")
+        XCTAssertEqual(t[4]?.target.minX, -494)
+        XCTAssertEqual(t[4]?.final?.minX, 999, "then parks on its usual side")
+        let plain = LayoutEngine.transitions(p, currentFrames: current, context: context, config: testConfig)
+        XCTAssertEqual(plain[3]?.target.minX, 999, "without the hint, hidden windows exit on their own side")
+    }
+
+    func testVisibleWindowThatWouldRewindStartsFromTheEnteringEdge() {
+        let context = LayoutContext(area: testArea, screenFrame: testScreen)
+        let p = LayoutEngine.placements(makeStrip([1, 2, 3], width: 0.5, focused: 0), context: context, config: testConfig)
+        let current: [WindowID: CGRect] = [2: CGRect(x: 0, y: 0, width: 495, height: 800)]   // moving right = backwards
+        let t = LayoutEngine.transitions(p, currentFrames: current, context: context, config: testConfig, entering: .right)
+        XCTAssertEqual(t[2]?.start?.minX, 999)
+        XCTAssertNil(LayoutEngine.transitions(p, currentFrames: current, context: context, config: testConfig)[2]?.start)
+    }
+}
+
 final class ParkingAndTransitionTests: XCTestCase {
     let size = CGSize(width: 400, height: 300)
 

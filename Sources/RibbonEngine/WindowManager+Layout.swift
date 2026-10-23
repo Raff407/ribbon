@@ -117,7 +117,9 @@ extension WindowManager {
 
     /// Lays out every active strip on every enabled display. Without `force`, windows
     /// already at (or animating to) their target are left alone.
-    func relayout(animated: Bool, force: Bool = false) {
+    /// `entering`: a loop-around on that strip, so its windows keep moving the same way
+    /// (see `LayoutEngine.transitions`).
+    func relayout(animated: Bool, force: Bool = false, entering: (key: StripKey, side: Side)? = nil) {
         guard isEnabled else { return }
         let config = layoutConfig
         let now = services.scheduler.now()
@@ -134,7 +136,8 @@ extension WindowManager {
             for p in placements {
                 current[p.window] = services.applier.expectedFrame(of: p.window) ?? infos[p.window]?.frame
             }
-            var transitions = LayoutEngine.transitions(placements, currentFrames: current, context: context, config: config)
+            var transitions = LayoutEngine.transitions(placements, currentFrames: current, context: context, config: config,
+                                                       entering: entering?.key == key ? entering?.side : nil)
             if !force {
                 transitions = transitions.filter { id, t in
                     t.start != nil || !(services.applier.expectedFrame(of: id)?.isApproximatelyEqual(to: t.settledFrame, tolerance: 0.5) ?? false)

@@ -48,10 +48,21 @@ extension WindowManager {
         let newFocus = next.focusedWindow
         let focusChanged = newFocus != nil && newFocus != focusedWindowID
         if let newFocus, focusChanged { focus(newFocus) }
-        relayout(animated: true)
+        relayout(animated: true, entering: Self.loopAround(command, from: strip, to: next).map { (key, $0) })
         if focusChanged, settings.behavior.mouseFollowsFocus, let id = newFocus,
            let frame = services.applier.expectedFrame(of: id) {
             services.input.warpMouse(to: frame.center)
+        }
+    }
+
+    /// The side new windows come in from when `command` looped past an end of the strip
+    /// (left/right focus or move jumping to the other end), else nil.
+    static func loopAround(_ command: Command, from old: Strip, to new: Strip) -> Side? {
+        guard let before = old.focusedColumnIndex, let after = new.focusedColumnIndex else { return nil }
+        switch command {
+        case .focus(.right), .move(.right): return after < before ? .right : nil
+        case .focus(.left), .move(.left): return after > before ? .left : nil
+        default: return nil
         }
     }
 

@@ -212,11 +212,17 @@ public enum LayoutEngine {
     ///   needed), `final` = `parkedFrame(...)`. If the window is already parked/off-screen,
     ///   `target` = parked frame, no final.
     /// * Windows not in `placements` are not included.
+    ///
+    /// `entering` is for loop-around jumps (focus or move past the end): it's the side new
+    /// windows arrive from, so the strip looks like it keeps going instead of rewinding.
+    /// Windows that leave the screen slide out the opposite side (then park as usual), and
+    /// visible windows that would otherwise travel backwards start from the `entering` edge.
     public static func transitions(
         _ placements: [WindowPlacement],
         currentFrames: [WindowID: CGRect],
         context: LayoutContext,
-        config: LayoutConfig
+        config: LayoutConfig,
+        entering: Side? = nil
     ) -> [WindowID: FrameTransition] {
         let screen = context.screenFrame
         let sliver = config.parkingSliver
@@ -228,9 +234,14 @@ public enum LayoutEngine {
             let offScreen = current.map { isMostlyOffScreen($0, screen: screen) } ?? true
             switch placement.visibility {
             case .visible, .partial:
-                let start: CGRect? = offScreen
-                    ? edgeFrame(for: target, side: target.midX >= screen.midX ? .right : .left, screen: screen, sliver: sliver)
-                    : nil
+                let start: CGRect?
+                if let entering, offScreen || movesBackwards(from: current, to: target, travelling: entering) {
+                    start = edgeFrame(for: target, side: entering, screen: screen, sliver: sliver)
+                } else if offScreen {
+                    start = edgeFrame(for: target, side: target.midX >= screen.midX ? .right : .left, screen: screen, sliver: sliver)
+                } else {
+                    start = nil
+                }
                 result[placement.window] = FrameTransition(start: start, target: target)
             case .hidden(let side):
                 let parked = parkedFrame(size: target.size, side: side, screen: screen,
@@ -238,7 +249,7 @@ public enum LayoutEngine {
                 if offScreen {
                     result[placement.window] = FrameTransition(target: parked)
                 } else {
-                    let slid = edgeFrame(for: target, side: side, screen: screen, sliver: sliver)
+                    let slid = edgeFrame(for: target, side: entering?.opposite ?? side, screen: screen, sliver: sliver)
                     result[placement.window] = FrameTransition(target: slid, final: parked)
                 }
             }
@@ -330,6 +341,13 @@ extension LayoutEngine {
             y += height + config.gap
         }
         return result
+    }
+
+    /// New windows arrive from `entering`, so travel is towards the other side: a window
+    /// moving the opposite way would look like the strip is rewinding.
+    static func movesBackwards(from current: CGRect?, to target: CGRect, travelling entering: Side) -> Bool {
+        guard let current else { return false }
+        return entering == .right ? target.minX > current.minX + 1 : target.minX < current.minX - 1
     }
 
     static func clamp(_ offset: Double, total: Double, width: Double) -> Double {

@@ -19,6 +19,17 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(h.strip.viewportOffset, 0, "and scrolls back to it")
     }
 
+    func testLoopAroundSlidesForwardInsteadOfRewinding() {
+        let h = Harness().start([1, 2, 3, 4], focused: 1)
+        h.manager.perform(.focusLast)
+        XCTAssertEqual(h.applier.expected[4]?.minX, 505)
+        h.manager.perform(.focus(.right))
+        XCTAssertEqual(h.strip.focusedWindow, 1)
+        XCTAssertEqual(h.applier.lastTransitions[1]?.start?.minX, 999, "first window comes in from the right")
+        XCTAssertEqual(h.applier.lastTransitions[4]?.target.minX, -494, "last window leaves to the left")
+        XCTAssertNil(WindowManager.loopAround(.focus(.left), from: h.strip, to: h.strip))
+    }
+
     func testFirstFocusCommandReturnsFocusToStrip() {
         let h = Harness().start([1, 2], focused: nil)
         h.manager.perform(.focus(.right))
